@@ -1,17 +1,28 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import sys
+import time 
 
-
-class automatons():
+class cellular_automata():
     def __init__(self,dim_x=32, dim_y=32, init_prob=0.1,rule='conway'):
-        
+        # universe dimensions    
         self.dim_x = dim_x
         self.dim_y = dim_y
         
+        self.reset(init_prob,rule)
+
+    def reset(self, init_prob, rule):
+        
+        # random slate
         self.plane = np.array(np.random.random((self.dim_x,self.dim_y)) < init_prob,dtype=np.int8)
-        self.live_rules = np.zeros((9,)) #1*np.random.random((9,)) < 0.2
-        self.dead_rules = np.zeros((9,)) #1*np.array(np.random.random((9,)) < 0.05,dtype=np.int8)
+        
+        #self.fig, self.ax = plt.subplots(1,1,figsize=(8,8))
+
+
+
+        #determine rules
+        self.live_rules = np.zeros((9,)) 
+        self.dead_rules = np.zeros((9,)) 
         
         if(rule=='conway'):
             #23/3
@@ -193,9 +204,15 @@ class automatons():
 
         return plane
 
-    def render(self):
-        pass
-    
+    def render(self, im, plane, doblit=False):
+        plt.ion()
+
+        #while True:
+        im.set_data(plane)
+        plt.pause(0.025)
+
+        plt.ioff() # due to infinite loop, this gets never called.
+
 def update_ax(ax, new_plane):
     ax.imshow(new_plane, cmap='gray')
     plt.draw()
@@ -208,7 +225,7 @@ if __name__ == '__main__':
         rule_name = sys.argv[1]
     else:
         rule_name = 'conway'
-    cell = automatons(init_prob=0.25,rule=rule_name)
+    cell = cellular_automata(init_prob=0.25,rule=rule_name)
     
     if len(sys.argv)>2:
         cell.plane *= 0
@@ -224,6 +241,8 @@ if __name__ == '__main__':
         #plt.figure(figsize=(8,8))
         #plt.imshow(cell.plane,cmap='gray')
         #plt.show
-        update_ax(ax, cell.plane)
+        #update_ax(ax, cell.plane)
+        im = cell.ax.imshow(cell.plane, cmap='gray')
+        cell.render(im, cell.plane)
         cell.plane = cell.step(cell.plane)
 
