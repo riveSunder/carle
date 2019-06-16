@@ -7,6 +7,9 @@ import absl
 import absl.app
 import absl.flags
 
+import tensorflow as tf
+from tensorflow.keras.optimizers import Adam
+from models import alexnet
 #FLAGS = absl.FLAGS
 
 class cellular_automata():
@@ -19,9 +22,12 @@ class cellular_automata():
         self.w_rnd = 7.5e-1
         self.w_der = 2.5e-1
 
+        
         self.reset(init_prob,rule)
         self.distiller = None
         
+        self.plane_memory = np.zeros_like(self.plane)
+
     def reset(self, init_prob, rule):
         
         # random slate
@@ -226,6 +232,7 @@ class cellular_automata():
         
         
         # toggle the toggles (XOR plane and action)
+        action = np.array(action, dtype=np.uint8)
         plane = (plane | action) - (plane & action)
 
         # step and distill
@@ -235,11 +242,16 @@ class cellular_automata():
 
         # compute reward 
         rnd_reward = np.sum(np.abs(prediction - distillate))
-        derivative_reward = np.sum( new_plane - plane )
-        
+
+       
+        derivative_reward0 = np.sum(np.abs(new_plane - plane))
+        derivative_reward1 = np.sum(np.abs(new_plane - self.plane_memory))
+        derivative_reward = (derivative_reward0 + derivative_reward1)/2
+        self.plane_memory = plane
+
         reward = self.w_rnd * rnd_reward + self.w_der * derivative_reward
 
-        if derivative_reward == 0:
+        if derivative_reward0 == 0 or derivative_reward1 == 0:
             info['done'] = True
 
         return new_plane, reward, distillate,  info
@@ -273,7 +285,8 @@ class cellular_automata():
             x = self.relu(x)
             x = np.matmul(x, self.distiller[name])
         
-        x = np.tanh(x)
+        # sigmoid activation
+        x = 1 / (1 + np.exp(-x))
         return x
 
     def relu(self, z):
@@ -333,33 +346,59 @@ def animate_ca():
 
 def step_test():
 
-    ca = cellular_automata(init_prob=0.25, rule='conway')
-
     ax = plt.axes()
-    plane = ca.plane
-    info = {'done': False}
-    step = 0
-    toggle_prob = 0.1
+    toggle_prob = 0.00
 
-    while(info['done'] == False):
+    alex = alexnet()
+    predictor = alex.get_model()
+    predictor.compile(loss='binary_crossentropy', optimizer=Adam(lr=3e-4))
 
-        action = np.random.random(size=(ca.plane.shape[-2], ca.plane.shape[-1]))
-        
-        print(action.shape)
-        
-        action[action < (1-toggle_prob)] = 0.
-        action[action >= (1-toggle_prob)] = 1.
+    max_episodes = 1000
+    for episode in range(max_episodes):
+        # reset the ca universe and 'done' state
+        ca = cellular_automata(init_prob=0.05, rule='conway')
+        plane = ca.plane
+        step = 0
+        info = {'done': False}
 
-        prediction = np.random.randn(1,16)
-        
-        plane, reward, distillate, info = ca.rl_step(plane, action, prediction)
-        print('step {} reward: {}'.format(step, reward))
-        
-        im = ax.imshow(ca.plane, cmap='gray')
-        
-        ca.render(im, ca.plane)
-        ax.cla()
-        step += 1
+        while(info['done'] == False):
+
+            action = np.random.random(size=(ca.plane.shape[-2], ca.plane.shape[-1]))
+            
+            action[action < (1-toggle_prob)] = 0.
+            action[action >= (1-toggle_prob)] = 1.
+
+            if(0):
+                prediction = np.random.randn(1,16)
+            else:
+                x = plane.reshape(1, plane.shape[-2], plane.shape[-1], 1)
+                prediction = predictor.predict(x)
+            
+            action = np.array(action, dtype=np.uint8)
+            old_plane =  ((plane | action) - (plane & action)).reshape(1,plane.shape[-2], plane.shape[-1],1)
+            plane, reward, distillate, info = ca.rl_step(plane, action, prediction)
+            print('episode {} step {} reward: {}'.format(episode, step, reward))
+           
+
+            try: 
+                old_planes = np.append(old_planes, old_plane, axis=0)
+                distillates = np.append(distillates, distillate, axis=0)
+                print(old_planes.shape, distillates.shape)
+                if distillates.shape[0] > 1000:
+                    distillates = distillates[:1000,...]
+            except:
+                old_planes = old_plane
+                distillates = distillate
+
+            start_loss = predictor.evaluate(old_planes, distillates, verbose=2)
+            predictor.fit(old_planes, distillates, batch_size=8, epochs=20, verbose=0)
+            end_loss = predictor.evaluate(old_planes, distillates, verbose=2)
+
+            #im = ax.imshow(ca.plane, cmap='gray')
+            
+            #ca.render(im, ca.plane)
+            #ax.cla()
+            step += 1
 
 
 def main(argv):
