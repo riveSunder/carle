@@ -9,14 +9,16 @@ import absl.flags
 
 #FLAGS = absl.FLAGS
 
-
-
 class cellular_automata():
     def __init__(self,dim_x=32, dim_y=32, init_prob=0.1,rule='conway'):
         # universe dimensions    
         self.dim_x = dim_x
         self.dim_y = dim_y
-        
+       
+        #reward weighting
+        self.w_rnd = 7.5e-1
+        self.w_der = 2.5e-1
+
         self.reset(init_prob,rule)
         self.distiller = None
         
@@ -208,20 +210,48 @@ class cellular_automata():
         self.plane = new_plane
         return new_plane
 
-    def rl_step(self, plane, action):
-        """"""
+    def rl_step(self, plane, action, prediction, steps=1):
+        """toggle the cells specified in action and advance the environment by (default) one step
+        plane - current state of ca universe
+        action - array with same dimensions as plane designating which cell states to toggle
+        prediction - the predicted random network distillate after the next step
+        steps - number of steps to propagate (added for flexibility, not used yet)
+        """
+        
+        # initialize returnables
+        new_plane = np.zeros_like(plane)
+        reward = 0.0
+        distillate = np.zeros_like(prediction) 
+        info = {'done': False}
+        
+        
+        # toggle the toggles (XOR plane and action)
+        plane = (plane | action) - (plane & action)
 
+        # step and distill
+        new_plane = self.step(plane)
+        distillate = self.distill(plane)
+        self.plane = plane
 
-        pass
+        # compute reward 
+        rnd_reward = np.sum(np.abs(prediction - distillate))
+        derivative_reward = np.sum( new_plane - plane )
+        
+        reward = self.w_rnd * rnd_reward + self.w_der * derivative_reward
+
+        if derivative_reward == 0:
+            info['done'] = True
+
+        return new_plane, reward, distillate,  info
 
     def distill(self, plane, random_seed=29):
         """random network distillation of the input plane"""
         
-        # get universe
+        # get universe dimensions
         dim_x, dim_y = plane.shape[0], plane.shape[1]
         # hidden layer dimension
         dim_h = 128
-        dim_out = 1
+        dim_out = 16
 
         if self.distiller is None:
             # generatie distillation reservoir if none exists
@@ -242,7 +272,8 @@ class cellular_automata():
             # Sequential random network 
             x = self.relu(x)
             x = np.matmul(x, self.distiller[name])
-                
+        
+        x = np.tanh(x)
         return x
 
     def relu(self, z):
@@ -300,9 +331,41 @@ def animate_ca():
         cell.plane = cell.step(cell.plane)
         ax.cla()
 
-def main(argv):
+def step_test():
+
     ca = cellular_automata(init_prob=0.25, rule='conway')
-    print(ca.distill(ca.plane))
+
+    ax = plt.axes()
+    plane = ca.plane
+    info = {'done': False}
+    step = 0
+    toggle_prob = 0.1
+
+    while(info['done'] == False):
+
+        action = np.random.random(size=(ca.plane.shape[-2], ca.plane.shape[-1]))
+        
+        print(action.shape)
+        
+        action[action < (1-toggle_prob)] = 0.
+        action[action >= (1-toggle_prob)] = 1.
+
+        prediction = np.random.randn(1,16)
+        
+        plane, reward, distillate, info = ca.rl_step(plane, action, prediction)
+        print('step {} reward: {}'.format(step, reward))
+        
+        im = ax.imshow(ca.plane, cmap='gray')
+        
+        ca.render(im, ca.plane)
+        ax.cla()
+        step += 1
+
+
+def main(argv):
+    #ca = cellular_automata(init_prob=0.25, rule='conway')
+    #print(ca.distill(ca.plane))
+    step_test()
 
 if __name__ == '__main__':
     absl.app.run(main)
