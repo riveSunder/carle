@@ -3,6 +3,14 @@ import matplotlib.pyplot as plt
 import sys
 import time 
 
+import absl
+import absl.app
+import absl.flags
+
+#FLAGS = absl.FLAGS
+
+
+
 class cellular_automata():
     def __init__(self,dim_x=32, dim_y=32, init_prob=0.1,rule='conway'):
         # universe dimensions    
@@ -10,7 +18,8 @@ class cellular_automata():
         self.dim_y = dim_y
         
         self.reset(init_prob,rule)
-
+        self.distiller = None
+        
     def reset(self, init_prob, rule):
         
         # random slate
@@ -151,6 +160,9 @@ class cellular_automata():
             self.dead_rules[6] = 1
         
     def step(self,plane):
+    
+        sum_kernel = np.array([[1,1,1],[1,0,1],[1,1,1]])
+
         new_plane = np.copy(plane)
         for xx in range(self.dim_x):
             for yy in range(self.dim_y):
@@ -195,12 +207,54 @@ class cellular_automata():
                     new_plane[xx,yy] = self.dead_rules[int(temp_sum)]
         self.plane = new_plane
         return new_plane
+
+    def rl_step(self, plane, action):
+        """"""
+
+
+        pass
+
+    def distill(self, plane, random_seed=29):
+        """random network distillation of the input plane"""
+        
+        # get universe
+        dim_x, dim_y = plane.shape[0], plane.shape[1]
+        # hidden layer dimension
+        dim_h = 128
+        dim_out = 1
+
+        if self.distiller is None:
+            # generatie distillation reservoir if none exists
+            current_state = np.random.get_state()
+            np.random.seed(random_seed)
+
+            self.distiller = {}
+            self.distiller['w0'] = np.random.randn(dim_x*dim_y, dim_h)
+            self.distiller['w1'] = np.random.randn(dim_h, dim_out)
+
+        # run plane through the random network
+        if(len(plane.shape) == 3):
+            # if plane is in (samples, x, y) format, reshape to (samples, x*y), else reshape to (sample, x, y)
+            x = plane.reshape(plane.shape[0], plane.shape[1]*plane.shape[2])
+        else:
+            x = plane.reshape(1, plane.shape[0]*plane.shape[1])
+        for name in self.distiller:
+            # Sequential random network 
+            x = self.relu(x)
+            x = np.matmul(x, self.distiller[name])
                 
+        return x
+
+    def relu(self, z):
+        """return the relu of z"""
+
+        return np.max([np.zeros_like(z),z], axis=0)
+
     def propagate(self, plane, steps):
         # propagate the CA universe in plane for a set number of steps
 
         for ll in range(steps):
-            plane = self.step(plane)
+            plane, reward, info = self.step(plane)
 
         return plane
 
@@ -219,8 +273,7 @@ def update_ax(ax, new_plane):
 
     plt.pause(0.01)
 
-
-if __name__ == '__main__':
+def animate_ca():
     if len(sys.argv) > 1:
         rule_name = sys.argv[1]
     else:
@@ -242,7 +295,14 @@ if __name__ == '__main__':
         #plt.imshow(cell.plane,cmap='gray')
         #plt.show
         #update_ax(ax, cell.plane)
-        im = cell.ax.imshow(cell.plane, cmap='gray')
+        im = ax.imshow(cell.plane, cmap='gray')
         cell.render(im, cell.plane)
         cell.plane = cell.step(cell.plane)
+        ax.cla()
 
+def main(argv):
+    ca = cellular_automata(init_prob=0.25, rule='conway')
+    print(ca.distill(ca.plane))
+
+if __name__ == '__main__':
+    absl.app.run(main)
