@@ -20,7 +20,7 @@ from tensorflow.keras.layers import Conv2D, MaxPooling2D, SpatialDropout2D, Resh
 
 
 class cellular_automata():
-    def __init__(self, dim_x=32, dim_y=32, dim_distillate=16, init_prob=0.1, rule='conway'):
+    def __init__(self, dim_x=64, dim_y=64, dim_distillate=16, init_prob=0.1, rule='conway'):
         # universe dimensions    
         self.dim_x = dim_x
         self.dim_y = dim_y
@@ -288,7 +288,7 @@ class cellular_automata():
             
             self.distiller = Sequential()
             self.distiller.add(Conv2D(filters=32, kernel_size=(3,3), strides=1,input_shape=(dim_x,dim_y,1), activation=tf.nn.relu, padding='same'))
-            self.distiller.add(MaxPooling2D(pool_size=2, strides=2))
+            self.distiller.add(MaxPooling2D(pool_size=4, strides=4))
             self.distiller.add(Conv2D(filters=64, kernel_size=(3,3), strides=1,input_shape=(dim_x,dim_y,1), activation=tf.nn.relu, padding='same'))
             self.distiller.add(MaxPooling2D(pool_size=2, strides=2))
             self.distiller.add(Conv2D(filters=128, kernel_size=(3,3), strides=1,input_shape=(dim_x,dim_y,1), activation=tf.nn.relu, padding='same'))
@@ -300,7 +300,8 @@ class cellular_automata():
             self.distiller.add(Conv2D(filters=16, kernel_size=(1,1), strides=1,\
                     kernel_initializer=tf.keras.initializers.RandomNormal(mean=0.0, stddev=2.5),\
                     input_shape=(dim_x,dim_y,1), padding='same'))
-
+            self.distiller.add(Flatten())
+            self.distiller.add(Dense(16,kernel_initializer=tf.keras.initializers.Identity))
             #self.distiller.add(Dense(self.dim_distillate,kernel_initializer=tf.keras.initializers.RandomNormal(mean=0.0, stddev=0.5, seed=random_seed)))
             self.distiller.add(Activation(tf.nn.sigmoid))
             self.distiller.add(Reshape([16]))
@@ -378,9 +379,11 @@ def get_fig(new_plane, predicted_distillate, distillate):
     # get a uniform max/min for displaying confidence and error
     #fig_min = np.min([np.min(var), np.min(np.abs(real-recon))])
     #fig_max = np.max([np.max(var), np.max(np.abs(real-recon))])
+    dim_x, dim_y = new_plane.shape[1], new_plane.shape[2]
+    
     figure = plt.figure(figsize=(12,5))
     plt.subplot(131)
-    plt.imshow(new_plane.reshape(32,32), cmap='magma')
+    plt.imshow(new_plane.reshape(dim_x,dim_y), cmap='magma')
     plt.subplot(132)
     plt.imshow(predicted_distillate.reshape(4,4), cmap='magma')
     plt.colorbar()
@@ -429,7 +432,7 @@ def step_test():
 
     alex = alexnet()
     predictor = alex.get_model()
-    predictor.compile(loss='mse', optimizer=Adam(lr=1e-3),metrics=['acc'])
+    predictor.compile(loss='mse', optimizer=Adam(lr=1e-4),metrics=['acc'])
    
     for seed in range(10):
         tf.random.set_seed(seed)
@@ -438,9 +441,9 @@ def step_test():
         train_summary_writer = tf.summary.create_file_writer('./logs/seed{}_{}'.format(seed,unique_id))
        
         # maximum number of episodes to train for
-        max_episodes = 500
+        max_episodes = 900
         # maximum number of steps per episodes
-        max_steps = 100
+        max_steps = 16
 
         summary_count = 0
         for episode in range(max_episodes):
@@ -489,14 +492,14 @@ def step_test():
         
                 if(1):
                     start_loss = predictor.evaluate(new_planes, distillates, verbose=0)
-                    predictor.fit(new_planes, distillates, batch_size=64, epochs=10, verbose=0)
+                    predictor.fit(new_planes, distillates, batch_size=64, epochs=3, verbose=0)
                     end_loss = predictor.evaluate(new_planes, distillates, verbose=0)
                 else:
                     start_loss = predictor.evaluate(old_planes, new_planes, verbose=0)
                     predictor.fit(old_planes, new_planes, batch_size=64, epochs=32, verbose=0)
                     end_loss = predictor.evaluate(old_planes, new_planes, verbose=0)
 
-                if(step % 32 == 0):
+                if(step % 8 == 0):
                     
                     print('episode {} step {} reward: {}, loss: {}'.format(episode, step, reward, end_loss))
                     with train_summary_writer.as_default():

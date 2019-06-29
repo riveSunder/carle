@@ -19,9 +19,9 @@ class alexnet(tf.keras.Model):
     def __init__(self, dim_x=32, dim_y=32, dim_out=16):
         super(alexnet, self).__init__(name='alexnet')
         
-        #self.conv0 = tf.keras.layers.Conv2D(input_shape=(dim_x,dim_y), activation='relu', padding='same')
-        #self.conv1 = tf.keras.layers.Conv2D(activation='relu', padding='same')
-        #self.conv2 = tf.keras.layers.Conv2D(actia
+        self.conv0 = tf.keras.layers.Conv2D(filters=256, kernel_size=(3,3), strides=1, input_shape=(dim_x,dim_y,1), activation='relu', padding='same')
+        self.conv1 = tf.keras.layers.Conv2D(filters=256, kernel_size=(3,3), strides=1, input_shape=(dim_x,dim_y,1), activation='relu', padding='same')
+        self.conv2 = tf.keras.layers.Conv2D(filters=1024, kernel_size=(3,3), strides=1, input_shape=(dim_x,dim_y,1), activation='relu', padding='same')
         pass
 
     def call(self, inputs):
@@ -29,7 +29,7 @@ class alexnet(tf.keras.Model):
 
     def get_model(self):
         #model = alexnet()
-        dim_x, dim_y = 32, 32
+        dim_x, dim_y = 64, 64
         #model.compile(loss='binary_crossentropy',optimizer='adam')
         
         #model = alexnet()
@@ -53,22 +53,6 @@ class alexnet(tf.keras.Model):
             model.add(Reshape(([16])))
             model.add(Activation(tf.nn.sigmoid))
 
-    
-        else:    
-            model = Sequential()
-            model.add(Conv2D(filters=256, kernel_size=(3,3), strides=1,input_shape=(dim_x,dim_y,1), activation=tf.nn.relu, padding='same'))
-            model.add(MaxPooling2D(pool_size=2, strides=2))
-            model.add(Conv2D(filters=512, kernel_size=(3,3), strides=1,input_shape=(dim_x,dim_y,1), activation=tf.nn.relu, padding='same'))
-            model.add(MaxPooling2D(pool_size=2, strides=2))
-            model.add(Conv2D(filters=1024, kernel_size=(3,3), strides=1,input_shape=(dim_x,dim_y,1), activation=tf.nn.relu, padding='same'))
-            model.add(SpatialDropout2D(rate=0.5))
-            model.add(Conv2D(filters=512, kernel_size=(2,2), strides=1,input_shape=(dim_x,dim_y,1), activation=tf.nn.relu, padding='same'))
-            model.add(Conv2D(filters=250, kernel_size=(2,2), strides=1,input_shape=(dim_x,dim_y,1), activation=tf.nn.tanh, padding='same'))
-            model.add(Reshape((16000,1)))
-            model.add(AveragePooling1D(pool_size=1000,strides=1000))
-            model.add(Reshape(([16])))
-            model.add(Activation(tf.nn.sigmoid))
-        #model.summary()
         return model
 
 def main(argv):
