@@ -10,7 +10,7 @@ import absl.flags
 
 import tensorflow as tf
 from tensorflow.keras.optimizers import Adam
-from models import alexnet
+from models import get_alexnet
 #FLAGS = absl.FLAGS
 
 from tensorflow.keras.models import Sequential
@@ -20,7 +20,8 @@ from tensorflow.keras.layers import Conv2D, MaxPooling2D, SpatialDropout2D, Resh
 
 
 class cellular_automata():
-    def __init__(self, dim_x=64, dim_y=64, dim_distillate=16, init_prob=0.1, rule='conway'):
+    def __init__(self, dim_x=64, dim_y=64, dim_distillate=16, init_prob=0.1, init_state=True, rule='conway'):
+        
         # universe dimensions    
         self.dim_x = dim_x
         self.dim_y = dim_y
@@ -30,11 +31,13 @@ class cellular_automata():
         #reward weighting
         self.w_rnd = 1.0
         self.w_der = 1.0 - self.w_rnd
-
         
         self.reset(init_prob,rule)
         self.distiller = None
         
+        if(init_state==True):
+
+            self.plane = np.load('./data/init_state.npy')
         self.plane_memory = np.zeros_like(self.plane)
 
     def reset(self, init_prob, rule):
@@ -430,9 +433,9 @@ def step_test():
         print(len(gpus), 'phys gpus', len(logical_gpus), 'logical gpu')
 
 
-    alex = alexnet()
-    predictor = alex.get_model()
-    predictor.compile(loss='mse', optimizer=Adam(lr=1e-4),metrics=['acc'])
+    #alex = get_alexnet()
+    predictor = get_alexnet(dropout_rate=0.5) #alex.get_model()
+    predictor.compile(loss='mse', optimizer=Adam(lr=9e-5), metrics=['acc'])
    
     for seed in range(10):
         tf.random.set_seed(seed)
@@ -441,9 +444,9 @@ def step_test():
         train_summary_writer = tf.summary.create_file_writer('./logs/seed{}_{}'.format(seed,unique_id))
        
         # maximum number of episodes to train for
-        max_episodes = 900
+        max_episodes = 64
         # maximum number of steps per episodes
-        max_steps = 16
+        max_steps = 64
 
         summary_count = 0
         for episode in range(max_episodes):
@@ -459,19 +462,25 @@ def step_test():
                 
                 action[action < (1-toggle_prob)] = 0.
                 action[action >= (1-toggle_prob)] = 1.
-
-                if(0):
-                    prediction = np.random.randn(1,16)
-                else:
-                    x = plane.reshape(1, plane.shape[-2], plane.shape[-1], 1)
-                    prediction = predictor.predict(x)
-
                 
+                
+                x = ca.plane.reshape(1, plane.shape[-2], plane.shape[-1], 1)
+                prediction = predictor.predict(x)
+                                                
                 action = np.array(action, dtype=np.uint8)
+                plane = np.array(plane, dtype=np.uint8)
                 old_plane =  ((plane | action) - (plane & action)).reshape(1,plane.shape[-2], plane.shape[-1],1)
                 plane, reward, distillate, info = ca.rl_step(plane, action, prediction)
                 #print('episode {} step {} reward: {}'.format(episode, step, reward))
-                 
+                
+                x = plane.reshape(1, plane.shape[-2], plane.shape[-1], 1)
+                prediction = predictor.predict(x)
+                
+                rnd_reward = np.sum(np.abs(prediction - distillate))
+                reward = rnd_reward 
+                
+                print('reward step {}: {}'.format(step, reward))
+
                 new_plane = plane.reshape(1, plane.shape[-2], plane.shape[-1],1)
 
                 try: 
@@ -479,11 +488,11 @@ def step_test():
                     new_planes = np.apped(new_planes, new_plane, axis=0) 
                     old_planes = np.append(old_planes, old_plane, axis=0)
                     distillates = np.append(distillates, distillate, axis=0)
-                    if distillates.shape[0] > 30000:
-                        distillates = distillates[:30000,...]
+                    if distillates.shape[0] > 3000:
+                        distillates = distillates[:3000,...]
 
-                        old_planes = old_planes[:30000,...]
-                        new_planes = new_planes[:30000,...]
+                        old_planes = old_planes[:3000,...]
+                        new_planes = new_planes[:3000,...]
                 except:
                     new_planes = new_plane
                     old_planes = old_plane
@@ -499,17 +508,20 @@ def step_test():
                     predictor.fit(old_planes, new_planes, batch_size=64, epochs=32, verbose=0)
                     end_loss = predictor.evaluate(old_planes, new_planes, verbose=0)
 
-                if(step % 8 == 0):
+                with train_summary_writer.as_default():
+
+                    tf.summary.scalar('prediction loss', end_loss[0], step=summary_count)
+                    tf.summary.scalar('accuracy', end_loss[1], step=summary_count)
+                    tf.summary.scalar('reward', reward, step=summary_count)
+ 
+                    summary_count += 1
+
+                    if(step % 16 == 0):
                     
-                    print('episode {} step {} reward: {}, loss: {}'.format(episode, step, reward, end_loss))
-                    with train_summary_writer.as_default():
+                        print('episode {} step {} reward: {}, loss: {}'.format(episode, step, reward, end_loss))
                         predicted_distillate = predictor.predict(new_plane)#.reshape(4,4)
-                        tf.summary.scalar('prediction loss', end_loss[0], step=summary_count)
-                        tf.summary.scalar('accuracy', end_loss[1], step=summary_count)
-                        tf.summary.scalar('reward', reward, step=summary_count)
                         my_fig = get_fig(new_plane, predicted_distillate, distillate)
                         tf.summary.image('distillate_comp', plot_to_image(my_fig), step=summary_count)
-                        summary_count += 1
                         #tf.summary.image('distillate', distillate.reshape(1,4,4,1), step=summary_count)
                         #tf.summary.image('predicted_distillate', predicted_distillate.reshape(1,4,4,1), step=summary_count)
                         #tf.summary.image('ca state', tf.Variable(new_plane), step=summary_count)
