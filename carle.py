@@ -16,7 +16,7 @@ from models import get_alexnet
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, SpatialDropout2D, Reshape, \
                                     AveragePooling1D, AveragePooling2D, Activation, \
-                                    Dropout, Dense, Flatten 
+                                    Dropout, Dense, Flatten, Lambda 
 
 
 class cellular_automata():
@@ -291,23 +291,12 @@ class cellular_automata():
             np.random.set_state(current_state)
             
             self.distiller = Sequential()
-            self.distiller.add(Conv2D(filters=32, kernel_size=(3,3), strides=1,input_shape=(dim_x,dim_y,1), activation=tf.nn.relu, padding='same'))
-            self.distiller.add(MaxPooling2D(pool_size=4, strides=4))
-            self.distiller.add(Conv2D(filters=64, kernel_size=(3,3), strides=1,input_shape=(dim_x,dim_y,1), activation=tf.nn.relu, padding='same'))
-            self.distiller.add(MaxPooling2D(pool_size=2, strides=2))
-            self.distiller.add(Conv2D(filters=128, kernel_size=(3,3), strides=1,input_shape=(dim_x,dim_y,1), activation=tf.nn.relu, padding='same'))
-            self.distiller.add(MaxPooling2D(pool_size=2, strides=2))
-            self.distiller.add(Conv2D(filters=256, kernel_size=(2,2), strides=1,input_shape=(dim_x,dim_y,1), activation=tf.nn.relu, padding='same'))
-            self.distiller.add(MaxPooling2D(pool_size=2, strides=2))
-            self.distiller.add(Conv2D(filters=128, kernel_size=(1,1), strides=1,input_shape=(dim_x,dim_y,1), activation=tf.nn.relu, padding='same'))
-            self.distiller.add(MaxPooling2D(pool_size=2, strides=2))
-            self.distiller.add(Conv2D(filters=16, kernel_size=(1,1), strides=1,\
-                    kernel_initializer=tf.keras.initializers.RandomNormal(mean=0.0, stddev=2.5),\
-                    input_shape=(dim_x,dim_y,1), padding='same'))
+            self.distiller.add(Lambda(lambda x: tf.cast(x,tf.float32)))
             self.distiller.add(Flatten())
-            self.distiller.add(Dense(16,kernel_initializer=tf.keras.initializers.Identity))
-            #self.distiller.add(Dense(self.dim_distillate,kernel_initializer=tf.keras.initializers.RandomNormal(mean=0.0, stddev=0.5, seed=random_seed)))
+            self.distiller.add(Dense(512,kernel_initializer=tf.keras.initializers.RandomNormal(mean=0.0, stddev=0.5, seed=random_seed), activation='relu'))
+            self.distiller.add(Dense(self.dim_distillate,kernel_initializer=tf.keras.initializers.RandomNormal(seed=random_seed)))
             self.distiller.add(Activation(tf.nn.sigmoid))
+
             self.distiller.add(Reshape([16]))
             self.distiller.trainable = False
             #self.distiller.summary()
@@ -445,9 +434,9 @@ def step_test():
         train_summary_writer = tf.summary.create_file_writer('./logs/seed{}_{}'.format(seed,unique_id))
        
         # maximum number of episodes to train for
-        max_episodes = 4 
+        max_episodes = 2 
         # maximum number of steps per episodes
-        max_steps = 512
+        max_steps = 1024
 
         summary_count = 0
 
@@ -463,7 +452,7 @@ def step_test():
                 
                 action = np.zeros_like(plane)
 
-                if step == 8 and episode == max_episodes-1:
+                if step == 36 and episode == max_episodes-1:
                     # destroy the fishhook
                     action[0:20,...] = plane[0:20,...] 
                 
@@ -484,19 +473,20 @@ def step_test():
                 print('reward step {}: {}'.format(step, reward))
 
                 new_plane = plane.reshape(1, plane.shape[-2], plane.shape[-1],1)
-                
-                plt.figure(figsize=(12,6))
-                plt.subplot(131)
-                plt.imshow(plane)
-                plt.title('step {} reward: {}'.format(step,reward))
-                plt.subplot(132)
-                plt.imshow(distillate.reshape(4,4))
-                plt.title('distillate')
-                plt.subplot(133)
-                plt.imshow(prediction.reshape(4,4))
-                plt.title('prediction')
-                plt.savefig('./figs/episode{}step{}.png'.format(episode,step))
-
+               
+                if episode == max_episodes-1:
+                    plt.figure(figsize=(12,6))
+                    plt.subplot(131)
+                    plt.imshow(plane)
+                    plt.title('step {} reward: {}'.format(step,'%.4f'%reward))
+                    plt.subplot(132)
+                    plt.imshow(distillate.reshape(4,4))
+                    plt.title('distillate')
+                    plt.subplot(133)
+                    plt.imshow(prediction.reshape(4,4))
+                    plt.title('prediction')
+                    plt.savefig('./figs/episode{}step{}.png'.format(episode,step))
+                    plt.clf()
 
                 try: 
 
