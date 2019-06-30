@@ -32,18 +32,19 @@ class cellular_automata():
         self.w_rnd = 1.0
         self.w_der = 1.0 - self.w_rnd
         
-        self.reset(init_prob,rule)
+        self.reset(init_prob, init_state, rule)
         self.distiller = None
         
+        self.plane_memory = np.zeros_like(self.plane)
+
+    def reset(self, init_prob, init_state, rule):
+        
+        # random slate
         if(init_state==True):
 
             self.plane = np.load('./data/init_state.npy')
-        self.plane_memory = np.zeros_like(self.plane)
-
-    def reset(self, init_prob, rule):
-        
-        # random slate
-        self.plane = np.array(np.random.random((self.dim_x,self.dim_y)) < init_prob,dtype=np.int8)
+        else:
+            self.plane = np.array(np.random.random((self.dim_x,self.dim_y)) < init_prob,dtype=np.int8)
         
         #self.fig, self.ax = plt.subplots(1,1,figsize=(8,8))
 
@@ -434,35 +435,37 @@ def step_test():
 
 
     #alex = get_alexnet()
-    predictor = get_alexnet(dropout_rate=0.5) #alex.get_model()
-    predictor.compile(loss='mse', optimizer=Adam(lr=9e-5), metrics=['acc'])
+    predictor = get_alexnet(dropout_rate=0.35) #alex.get_model()
+    predictor.compile(loss='mse', optimizer=Adam(lr=1e-5), metrics=['acc'])
    
-    for seed in range(10):
+    for seed in range(1):
         tf.random.set_seed(seed)
 
         unique_id = hash(time.time())
         train_summary_writer = tf.summary.create_file_writer('./logs/seed{}_{}'.format(seed,unique_id))
        
         # maximum number of episodes to train for
-        max_episodes = 64
+        max_episodes = 4 
         # maximum number of steps per episodes
-        max_steps = 64
+        max_steps = 512
 
         summary_count = 0
+
+        ca = cellular_automata(init_prob=0.15, rule='conway')
         for episode in range(max_episodes):
             # reset the ca universe and 'done' state
-            ca = cellular_automata(init_prob=0.15, rule='conway')
+            ca.reset(init_prob=0.0, init_state=True, rule='conway')
             plane = ca.plane
             step = 0
             info = {'done': False}
 
             while(info['done'] == False):
+                
+                action = np.zeros_like(plane)
 
-                action = np.random.random(size=(ca.plane.shape[-2], ca.plane.shape[-1]))
-                
-                action[action < (1-toggle_prob)] = 0.
-                action[action >= (1-toggle_prob)] = 1.
-                
+                if step == 8 and episode == max_episodes-1:
+                    # destroy the fishhook
+                    action[0:20,...] = plane[0:20,...] 
                 
                 x = ca.plane.reshape(1, plane.shape[-2], plane.shape[-1], 1)
                 prediction = predictor.predict(x)
@@ -471,7 +474,6 @@ def step_test():
                 plane = np.array(plane, dtype=np.uint8)
                 old_plane =  ((plane | action) - (plane & action)).reshape(1,plane.shape[-2], plane.shape[-1],1)
                 plane, reward, distillate, info = ca.rl_step(plane, action, prediction)
-                #print('episode {} step {} reward: {}'.format(episode, step, reward))
                 
                 x = plane.reshape(1, plane.shape[-2], plane.shape[-1], 1)
                 prediction = predictor.predict(x)
@@ -482,6 +484,19 @@ def step_test():
                 print('reward step {}: {}'.format(step, reward))
 
                 new_plane = plane.reshape(1, plane.shape[-2], plane.shape[-1],1)
+                
+                plt.figure(figsize=(12,6))
+                plt.subplot(131)
+                plt.imshow(plane)
+                plt.title('step {} reward: {}'.format(step,reward))
+                plt.subplot(132)
+                plt.imshow(distillate.reshape(4,4))
+                plt.title('distillate')
+                plt.subplot(133)
+                plt.imshow(prediction.reshape(4,4))
+                plt.title('prediction')
+                plt.savefig('./figs/episode{}step{}.png'.format(episode,step))
+
 
                 try: 
 
@@ -526,17 +541,6 @@ def step_test():
                         #tf.summary.image('predicted_distillate', predicted_distillate.reshape(1,4,4,1), step=summary_count)
                         #tf.summary.image('ca state', tf.Variable(new_plane), step=summary_count)
                     
-                if(0):
-                    plt.figure(figsize=(12,5))
-                    plt.subplot(131)
-                    plt.imshow(new_plane.reshape(32,32), cmap='magma')
-                    plt.subplot(132)
-                    plt.imshow(predicted_distillate, cmap='magma')
-                    plt.title('predicted')
-                    plt.subplot(133)
-                    plt.imshow(distillate.reshape(4,4), cmap='magma')
-                    plt.title('distillate')
-                    plt.show()
 
                 #im = ax.imshow(ca.plane, cmap='gray')
                 
