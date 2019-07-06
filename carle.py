@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import sys
+import io
 import time 
 
 import absl
@@ -9,29 +10,41 @@ import absl.flags
 
 import tensorflow as tf
 from tensorflow.keras.optimizers import Adam
-from models import alexnet
+from models import get_alexnet
 #FLAGS = absl.FLAGS
 
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, SpatialDropout2D, Reshape, \
+                                    AveragePooling1D, AveragePooling2D, Activation, \
+                                    Dropout, Dense, Flatten, Lambda 
+
+
 class cellular_automata():
-    def __init__(self,dim_x=32, dim_y=32, init_prob=0.1,rule='conway'):
+    def __init__(self, dim_x=64, dim_y=64, dim_distillate=16, init_prob=0.1, init_state=True, rule='conway'):
+        
         # universe dimensions    
         self.dim_x = dim_x
         self.dim_y = dim_y
        
+        #
+        self.dim_distillate = dim_distillate
         #reward weighting
-        self.w_rnd = 7.5e-1
-        self.w_der = 2.5e-1
-
+        self.w_rnd = 1.0
+        self.w_der = 1.0 - self.w_rnd
         
-        self.reset(init_prob,rule)
+        self.reset(init_prob, init_state, rule)
         self.distiller = None
         
         self.plane_memory = np.zeros_like(self.plane)
 
-    def reset(self, init_prob, rule):
+    def reset(self, init_prob, init_state, rule):
         
         # random slate
-        self.plane = np.array(np.random.random((self.dim_x,self.dim_y)) < init_prob,dtype=np.int8)
+        if(init_state==True):
+
+            self.plane = np.load('./data/init_state.npy')
+        else:
+            self.plane = np.array(np.random.random((self.dim_x,self.dim_y)) < init_prob,dtype=np.int8)
         
         #self.fig, self.ax = plt.subplots(1,1,figsize=(8,8))
 
@@ -269,24 +282,32 @@ class cellular_automata():
             # generatie distillation reservoir if none exists
             current_state = np.random.get_state()
             np.random.seed(random_seed)
+            
+            if(0):
 
-            self.distiller = {}
-            self.distiller['w0'] = np.random.randn(dim_x*dim_y, dim_h)
-            self.distiller['w1'] = np.random.randn(dim_h, dim_out)
+                self.distiller = {}
+                self.distiller['w0'] = 3e-1*np.random.randn(dim_x*dim_y, dim_h)
+                self.distiller['w1'] = 3e-1*np.random.randn(dim_h, dim_out)
+            np.random.set_state(current_state)
+            
+            self.distiller = Sequential()
+            self.distiller.add(Lambda(lambda x: tf.cast(x,tf.float32)))
+            self.distiller.add(Flatten())
+            self.distiller.add(Dense(512,kernel_initializer=tf.keras.initializers.RandomNormal(mean=0.0, stddev=0.5, seed=random_seed), activation='relu'))
+            self.distiller.add(Dense(self.dim_distillate,kernel_initializer=tf.keras.initializers.RandomNormal(seed=random_seed)))
+            self.distiller.add(Activation(tf.nn.sigmoid))
 
+            self.distiller.add(Reshape([16]))
+            self.distiller.trainable = False
+            #self.distiller.summary()
         # run plane through the random network
         if(len(plane.shape) == 3):
             # if plane is in (samples, x, y) format, reshape to (samples, x*y), else reshape to (sample, x, y)
-            x = plane.reshape(plane.shape[0], plane.shape[1]*plane.shape[2])
+            x = plane.reshape(plane.shape[0], plane.shape[1],plane.shape[2],1)
         else:
-            x = plane.reshape(1, plane.shape[0]*plane.shape[1])
-        for name in self.distiller:
-            # Sequential random network 
-            x = self.relu(x)
-            x = np.matmul(x, self.distiller[name])
-        
-        # sigmoid activation
-        x = 1 / (1 + np.exp(-x))
+            x = plane.reshape(1, plane.shape[0],plane.shape[1],1)
+       
+        x = self.distiller.predict(x)  
         return x
 
     def relu(self, z):
@@ -344,61 +365,179 @@ def animate_ca():
         cell.plane = cell.step(cell.plane)
         ax.cla()
 
+def get_fig(new_plane, predicted_distillate, distillate):
+    """
+    Return a figure comparing the reconstruction and associated uncertainty to the target and error
+    """
+    # get a uniform max/min for displaying confidence and error
+    #fig_min = np.min([np.min(var), np.min(np.abs(real-recon))])
+    #fig_max = np.max([np.max(var), np.max(np.abs(real-recon))])
+    dim_x, dim_y = new_plane.shape[1], new_plane.shape[2]
+    
+    figure = plt.figure(figsize=(12,5))
+    plt.subplot(131)
+    plt.imshow(new_plane.reshape(dim_x,dim_y), cmap='magma')
+    plt.subplot(132)
+    plt.imshow(predicted_distillate.reshape(4,4), cmap='magma')
+    plt.colorbar()
+    plt.title('predicted')
+    plt.subplot(133)
+    plt.imshow(distillate.reshape(4,4), cmap='magma')
+    plt.title('distillate')
+    plt.colorbar()
+    return figure
+
+def plot_to_image(figure):
+    """
+    This function comes from the example at https://www.tensorflow.org/tensorboard/r2/image_summaries
+    Converts the matplotlib plot specified by 'figure' to a PNG image and
+    returns it. The supplied figure is closed and inaccessible after this call.
+    """
+
+    # Save the plot to a PNG in memory.
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    # Closing the figure prevents it from being displayed directly inside
+    # the notebook.
+    plt.close(figure)
+    buf.seek(0)
+    # Convert PNG buffer to TF image
+    image = tf.image.decode_png(buf.getvalue(), channels=4)
+    # Add the batch dimension
+    image = tf.expand_dims(image, 0)
+    return image
+
+
 def step_test():
 
-    ax = plt.axes()
+    #tf.debugging.set_log_device_placement(True)
+
+    #ax = plt.axes()
     toggle_prob = 0.00
 
-    alex = alexnet()
-    predictor = alex.get_model()
-    predictor.compile(loss='binary_crossentropy', optimizer=Adam(lr=3e-4))
+    gpus = tf.config.experimental.list_physical_devices('GPU')
 
-    max_episodes = 1000
-    for episode in range(max_episodes):
-        # reset the ca universe and 'done' state
-        ca = cellular_automata(init_prob=0.05, rule='conway')
-        plane = ca.plane
-        step = 0
-        info = {'done': False}
+    if gpus:
+        tf.config.experimental.set_visible_devices(gpus[1], 'GPU')
+        logical_gpus =  tf.config.experimental.list_physical_devices('GPU')
+        print(len(gpus), 'phys gpus', len(logical_gpus), 'logical gpu')
 
-        while(info['done'] == False):
 
-            action = np.random.random(size=(ca.plane.shape[-2], ca.plane.shape[-1]))
-            
-            action[action < (1-toggle_prob)] = 0.
-            action[action >= (1-toggle_prob)] = 1.
+    #alex = get_alexnet()
+    predictor = get_alexnet(dropout_rate=0.35) #alex.get_model()
+    predictor.compile(loss='mse', optimizer=Adam(lr=1e-5), metrics=['acc'])
+   
+    for seed in range(1):
+        tf.random.set_seed(seed)
 
-            if(0):
-                prediction = np.random.randn(1,16)
-            else:
+        unique_id = hash(time.time())
+        train_summary_writer = tf.summary.create_file_writer('./logs/seed{}_{}'.format(seed,unique_id))
+       
+        # maximum number of episodes to train for
+        max_episodes = 2 
+        # maximum number of steps per episodes
+        max_steps = 1024
+
+        summary_count = 0
+
+        ca = cellular_automata(init_prob=0.15, rule='conway')
+        for episode in range(max_episodes):
+            # reset the ca universe and 'done' state
+            ca.reset(init_prob=0.0, init_state=True, rule='conway')
+            plane = ca.plane
+            step = 0
+            info = {'done': False}
+
+            while(info['done'] == False):
+                
+                action = np.zeros_like(plane)
+
+                if step == 36 and episode == max_episodes-1:
+                    # destroy the fishhook
+                    action[0:20,...] = plane[0:20,...] 
+                
+                x = ca.plane.reshape(1, plane.shape[-2], plane.shape[-1], 1)
+                prediction = predictor.predict(x)
+                                                
+                action = np.array(action, dtype=np.uint8)
+                plane = np.array(plane, dtype=np.uint8)
+                old_plane =  ((plane | action) - (plane & action)).reshape(1,plane.shape[-2], plane.shape[-1],1)
+                plane, reward, distillate, info = ca.rl_step(plane, action, prediction)
+                
                 x = plane.reshape(1, plane.shape[-2], plane.shape[-1], 1)
                 prediction = predictor.predict(x)
-            
-            action = np.array(action, dtype=np.uint8)
-            old_plane =  ((plane | action) - (plane & action)).reshape(1,plane.shape[-2], plane.shape[-1],1)
-            plane, reward, distillate, info = ca.rl_step(plane, action, prediction)
-            print('episode {} step {} reward: {}'.format(episode, step, reward))
-           
+               
+                rnd_reward = np.sum(np.abs(prediction - distillate))
+                reward = rnd_reward 
+                
+                print('reward step {}: {}'.format(step, reward))
 
-            try: 
-                old_planes = np.append(old_planes, old_plane, axis=0)
-                distillates = np.append(distillates, distillate, axis=0)
-                print(old_planes.shape, distillates.shape)
-                if distillates.shape[0] > 1000:
-                    distillates = distillates[:1000,...]
-            except:
-                old_planes = old_plane
-                distillates = distillate
+                new_plane = plane.reshape(1, plane.shape[-2], plane.shape[-1],1)
+               
+                if episode == max_episodes-1:
+                    plt.figure(figsize=(12,6))
+                    plt.subplot(131)
+                    plt.imshow(plane)
+                    plt.title('step {} reward: {}'.format(step,'%.4f'%reward))
+                    plt.subplot(132)
+                    plt.imshow(distillate.reshape(4,4))
+                    plt.title('distillate')
+                    plt.subplot(133)
+                    plt.imshow(prediction.reshape(4,4))
+                    plt.title('prediction')
+                    plt.savefig('./figs/episode{}step{}.png'.format(episode,step))
+                    plt.clf()
 
-            start_loss = predictor.evaluate(old_planes, distillates, verbose=2)
-            predictor.fit(old_planes, distillates, batch_size=8, epochs=1, verbose=0)
-            end_loss = predictor.evaluate(old_planes, distillates, verbose=2)
+                try: 
 
-            #im = ax.imshow(ca.plane, cmap='gray')
-            
-            #ca.render(im, ca.plane)
-            #ax.cla()
-            step += 1
+                    new_planes = np.apped(new_planes, new_plane, axis=0) 
+                    old_planes = np.append(old_planes, old_plane, axis=0)
+                    distillates = np.append(distillates, distillate, axis=0)
+                    if distillates.shape[0] > 3000:
+                        distillates = distillates[:3000,...]
+
+                        old_planes = old_planes[:3000,...]
+                        new_planes = new_planes[:3000,...]
+                except:
+                    new_planes = new_plane
+                    old_planes = old_plane
+                    distillates = distillate
+        
+        
+                if(1):
+                    start_loss = predictor.evaluate(new_planes, distillates, verbose=0)
+                    predictor.fit(new_planes, distillates, batch_size=64, epochs=3, verbose=0)
+                    end_loss = predictor.evaluate(new_planes, distillates, verbose=0)
+                else:
+                    start_loss = predictor.evaluate(old_planes, new_planes, verbose=0)
+                    predictor.fit(old_planes, new_planes, batch_size=64, epochs=32, verbose=0)
+                    end_loss = predictor.evaluate(old_planes, new_planes, verbose=0)
+
+                with train_summary_writer.as_default():
+
+                    tf.summary.scalar('prediction loss', end_loss[0], step=summary_count)
+                    tf.summary.scalar('accuracy', end_loss[1], step=summary_count)
+                    tf.summary.scalar('reward', reward, step=summary_count)
+ 
+                    summary_count += 1
+
+                    if(step % 16 == 0):
+                    
+                        print('episode {} step {} reward: {}, loss: {}'.format(episode, step, reward, end_loss))
+                        predicted_distillate = predictor.predict(new_plane)#.reshape(4,4)
+                        my_fig = get_fig(new_plane, predicted_distillate, distillate)
+                        tf.summary.image('distillate_comp', plot_to_image(my_fig), step=summary_count)
+                        #tf.summary.image('distillate', distillate.reshape(1,4,4,1), step=summary_count)
+                        #tf.summary.image('predicted_distillate', predicted_distillate.reshape(1,4,4,1), step=summary_count)
+                        #tf.summary.image('ca state', tf.Variable(new_plane), step=summary_count)
+                    
+
+                #im = ax.imshow(ca.plane, cmap='gray')
+                
+                #ca.render(im, ca.plane)
+                #ax.cla()
+                step += 1
+                if step > max_steps: info['done'] = True
 
 
 def main(argv):
