@@ -391,7 +391,7 @@ def step_test():
                 distillates = distillate
 
             start_loss = predictor.evaluate(old_planes, distillates, verbose=2)
-            predictor.fit(old_planes, distillates, batch_size=8, epochs=20, verbose=0)
+            predictor.fit(old_planes, distillates, batch_size=8, epochs=1, verbose=0)
             end_loss = predictor.evaluate(old_planes, distillates, verbose=2)
 
             #im = ax.imshow(ca.plane, cmap='gray')
