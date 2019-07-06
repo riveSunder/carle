@@ -466,7 +466,7 @@ def step_test():
                 
                 x = plane.reshape(1, plane.shape[-2], plane.shape[-1], 1)
                 prediction = predictor.predict(x)
-                
+               
                 rnd_reward = np.sum(np.abs(prediction - distillate))
                 reward = rnd_reward 
                 
