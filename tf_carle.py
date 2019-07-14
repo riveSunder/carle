@@ -15,8 +15,11 @@ from tf_agents.utils import nest_utils
 from tf_agents.utils import common as common_utils
 from tf_agents.environments import utils
 from tf_agents.networks import utils as net_utils
-tf.compat.v1.enable_v2_behavior()
+from tf_agents.policies import random_tf_policy
+from tf_agents.replay_buffers import tf_uniform_replay_buffer
+from tf_agents.trajectories import trajectory
 
+tf.compat.v1.enable_v2_behavior()
 
 # PPO stuff
 from tf_agents.networks.actor_distribution_network import ActorDistributionNetwork
@@ -108,7 +111,7 @@ class CAEnv(py_environment.PyEnvironment):
         self.dim_y = dim_y
         
         # maximum episode length
-        self.max_steps = 2048
+        self.max_steps = 256 
 
         # we don't need to specify the random network within the environment
         # move rnd entirely outside environment
@@ -316,6 +319,9 @@ if __name__ == '__main__':
     env = CAEnv()
     
     tf_env = tf_py_environment.TFPyEnvironment(env)
+
+    train_env = tf_py_environment.TFPyEnvironment(env)
+    eval_env = tf_py_environment.TFPyEnvironment(env)
     #   utils.validate_py_environment(env, episodes=1)
     #predictor = get_alexnet(dropout_rate=0.35) #alex.get_model()
     #predictor.compile(loss='mse', optimizer=Adam(lr=1e-5), metrics=['acc'])
@@ -333,15 +339,67 @@ if __name__ == '__main__':
             fc_layer_params=fc_layer_params\
             )
 
+    
+    time_step = tf_env.reset()
+   
+    lr = 1e-4
+    optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=lr)
+
+    train_step_counter = tf.compat.v2.Variable(0)
 
     ppo_agent = PPOAgent(\
             tf_env.time_step_spec(),\
             tf_env.action_spec(),\
-            actor_net=my_net\
+            actor_net=my_net,\
+            optimizer=optimizer,\
+            train_step_counter=train_step_counter\
             )
-    
-    time_step = tf_env.reset()
-    
+
+    ppo_agent.initialize()
+
+    eval_policy = ppo_agent.policy
+    collect_policy = ppo_agent.collect_policy
+    random_policy = random_tf_policy.RandomTFPolicy(train_env.time_step_spec(),
+                                                    train_env.action_spec())
+
+    def compute_avg_return(environment, policy, num_episodes=10):
+
+        total_return = 0.0
+        for _ in range(num_episodes):
+            time_step = environment.reset()
+            episode_return = 0.0
+
+            while not time_step.is_last():
+                action_step = policy.action(time_step)
+                time_step = environment.step(action_step.action)
+                episode_return += time_step.reward
+            total_return += episode_return
+
+        avg_return = total_return / num_episodes
+        return avg_return.numpy()[0]
+
+
+    #compute_avg_return(eval_env, random_policy, 3)
+    initial_collect_steps = 32
+    replay_buffer_capacity = 100
+    replay_buffer = tf_uniform_replay_buffer.TFUniformReplayBuffer(
+            data_spec=ppo_agent.collect_data_spec,
+            batch_size=train_env.batch_size,
+            max_length=replay_buffer_capacity)
+    if(0):
+        def collect_step(environment, policy):
+              time_step = environment.current_time_step()
+              action_step = policy.action(time_step)
+              next_time_step = environment.step(action_step.action)
+              traj = trajectory.from_transition(time_step, action_step, next_time_step)
+
+              # Add trajectory to the replay buffer
+              replay_buffer.add_batch(traj)
+
+
+        for _ in range(initial_collect_steps):
+            collect_step(train_env, random_policy)
+
     if(0):
         action = my_net(time_step.observation, time_step.step_type)
         
@@ -353,17 +411,4 @@ if __name__ == '__main__':
 
             print('step {}, reward: {}'.format(time_step.step_type, time_step.reward))
         print(time_step)
-
-    if(0):
-        for my_step in range(1000):
-            
-            # define random actions
-            action = np.zeros((1, env.dim_x, env.dim_y), dtype=np.int32)
-
-            plane = env._state
-
-            step = env._step(action)
-            
-            if env.episode_step % 16 == 0:
-                print('step {}, reward: {}'.format(env.episode_step, step.reward))
 
