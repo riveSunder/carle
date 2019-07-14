@@ -6,16 +6,95 @@ import abc
 import tensorflow as tf
 import numpy as np
 
-from tf_agents.environments import py_environment
-
+from tf_agents.environments import py_environment, tf_py_environment
 from tf_agents.trajectories import time_step as ts
-
-from tf_agents.environments import utils
 from tf_agents.specs import array_spec
-
+from tf_agents.agents.dqn import dqn_agent
+from tf_agents.networks import network, encoding_network
+from tf_agents.utils import nest_utils
+from tf_agents.utils import common as common_utils
+from tf_agents.environments import utils
+from tf_agents.networks import utils as net_utils
 tf.compat.v1.enable_v2_behavior()
 
+
+# PPO stuff
+from tf_agents.networks.actor_distribution_network import ActorDistributionNetwork
+from tf_agents.agents.ppo.ppo_agent import PPOAgent
+    
+#FLAGS = absl.FLAGS
+
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, SpatialDropout2D, Reshape, \
+                                    AveragePooling1D, AveragePooling2D, Activation, \
+                                    Dropout, Dense, Flatten, Lambda 
+
 import matplotlib.pyplot as plt
+
+from models import get_alexnet
+
+class ActorNetwork(network.Network):
+
+  def __init__(self,
+               observation_spec,
+               action_spec,
+               preprocessing_layers=None,
+               preprocessing_combiner=None,
+               conv_layer_params=None,
+               fc_layer_params=(75, 40),
+               dropout_layer_params=None,
+               activation_fn=tf.keras.activations.relu,
+               enable_last_layer_zero_initializer=False,
+               name='ActorNetwork'):
+    super(ActorNetwork, self).__init__(
+        input_tensor_spec=observation_spec, state_spec=(), name=name)
+    """
+    Actor network based on https://github.com/tensorflow/agents/blob/master/tf_agents/colabs/8_networks_tutorial.ipynb
+    commit 51bdd32abd8003d9de8618cff599cf2a44a38cd6
+    """
+
+    self._action_spec = action_spec
+    flat_action_spec = tf.nest.flatten(action_spec)
+
+    kernel_initializer = tf.keras.initializers.VarianceScaling(
+        scale=1. / 3., mode='fan_in', distribution='uniform')
+
+    self._encoder = encoding_network.EncodingNetwork(
+        observation_spec,
+        preprocessing_layers=preprocessing_layers,
+        preprocessing_combiner=preprocessing_combiner,
+        conv_layer_params=conv_layer_params,
+        fc_layer_params=fc_layer_params,
+        dropout_layer_params=dropout_layer_params,
+        activation_fn=activation_fn,
+        kernel_initializer=kernel_initializer,
+        batch_squash=False)
+
+    initializer = tf.keras.initializers.RandomUniform(
+        minval=-0.003, maxval=0.003)
+
+    self._action_projection_layer = tf.keras.layers.Dense(
+        flat_action_spec[0].shape.num_elements(),
+        activation=tf.keras.activations.sigmoid,
+        kernel_initializer=initializer,
+        name='action')
+
+  def call(self, observations, step_type=(), network_state=()):
+    outer_rank = nest_utils.get_outer_rank(observations, self.input_tensor_spec)
+    # We use batch_squash here in case the observations have a time sequence
+    # compoment.
+    batch_squash = net_utils.BatchSquash(outer_rank)
+    observations = tf.nest.map_structure(batch_squash.flatten, observations)
+
+    state, network_state = self._encoder(
+        observations, step_type=step_type, network_state=network_state)
+    actions = self._action_projection_layer(state)
+    actions = common_utils.scale_to_spec(actions, self._action_spec)
+    actions = batch_squash.unflatten(actions)
+
+    return tf.nest.pack_sequence_as(self._action_spec, [actions]), network_state
+
 
 class CAEnv(py_environment.PyEnvironment):
     def __init__(self):
@@ -40,9 +119,9 @@ class CAEnv(py_environment.PyEnvironment):
         self.w_der = 1.0 - self.w_rnd
         
         self.reset()
-        self.distiller = None
-         
-       
+        self.rn = self.get_rn(self.dim_x, self.dim_y, self.dim_distillate)
+        self.predictor = self.get_predictor(self.dim_x, self.dim_y, self.dim_distillate)
+        
         # actions consist of an array of toggle instructions with the same size
         # as the observation space,  
         self._action_spec = array_spec.BoundedArraySpec(\
@@ -60,9 +139,9 @@ class CAEnv(py_environment.PyEnvironment):
         #init_state /= 255
         self._state = init_state
         
-    
         self.episode_step = 0
-        self.plane_memory = np.zeros_like(self._state)
+
+        
         #determine rules
         self.live_rules = np.zeros((9,)) 
         self.dead_rules = np.zeros((9,)) 
@@ -99,12 +178,17 @@ class CAEnv(py_environment.PyEnvironment):
         """
         sum_kernel = np.array([[1,1,1],[1,0,1],[1,1,1]])
         
-        print(action.shape)
+        #prediction = action[:,-16:]
+        #action = action[:,:-16]
+        # this is probably inefficient, but we need floats for the rnd prediction
+
+        action = action.reshape(self.dim_x, self.dim_y)
+
+        #action = np.array(action, dtype=np.int32)
         plane = (self._state | action) - (self._state & action)
         
         new_plane = np.copy(self._state)
 
-        print('update ca world') 
         for xx in range(self.dim_x):
             for yy in range(self.dim_y):
                 temp_sum = 0
@@ -147,7 +231,7 @@ class CAEnv(py_environment.PyEnvironment):
                 else:
                     new_plane[xx,yy] = self.dead_rules[int(temp_sum)]
         
-        self._state= new_plane
+        self._state = new_plane
 
         if self._episode_ended:
             # The last action ended the episode. Ignore the current action and start
@@ -157,9 +241,38 @@ class CAEnv(py_environment.PyEnvironment):
 
             self._episode_ended = True
         
-        self.episode_step += 1
+        # -- do rnd stuff
+        rn_out = self.rn.predict(self._state[tf.newaxis,:,:])
+        new_plane = self._state[tf.newaxis,:,:,tf.newaxis]
+        try: 
+            
+            self.new_planes = np.apped(self.new_planes, new_plane, axis=0) 
+            #old_planes = np.append(old_planes, old_plane, axis=0)
+            self.distillates = np.append(self.distillates, rn_out, axis=0)
+            if distillates.shape[0] > 3000:
+                distillates = distillates[:3000,...]
+
+                old_planes = old_planes[:3000,...]
+                new_planes = new_planes[:3000,...]
+        except:
+            self.new_planes = new_plane
+            #old_planes = old_plane
+            self.distillates = rn_out
+
+        prediction = self.predictor.predict(self._state[tf.newaxis,:,:,tf.newaxis])
+        #start_loss = predictor.evaluate(new_planes, distillates, verbose=0)
+        self.predictor.fit(self.new_planes, self.distillates, batch_size=64, epochs=3, verbose=0)
+        #end_loss = predictor.evaluate(new_planes, distillates, verbose=0)
+
+        # -- end do rnd stuff
 
         reward = - np.mean(action)
+        
+        rn_reward = np.sum(np.abs(prediction - rn_out)**2)
+        reward += rn_reward
+
+
+        self.episode_step += 1
 
         if self._episode_ended:
             return ts.termination(np.array([self._state], dtype=np.int32), reward)
@@ -167,16 +280,90 @@ class CAEnv(py_environment.PyEnvironment):
             return ts.transition(
               np.array([self._state], dtype=np.int32), reward=reward, discount=1.0)
 
+    def get_rn(self, dim_x=64, dim_y=64, dim_out=16):
+        """
+        define random network (fixed weight mlp)
+        """
+        random_seed = 29
+
+        model = Sequential()
+        #model.add(Lambda(lambda x: x.reshape(1, dim_x, dim_y, 1)))
+        model.add(Lambda(lambda x: tf.cast(x,tf.float32)))
+        model.add(Flatten())
+        
+        model.add(Dense(512,\
+                kernel_initializer=tf.keras.initializers.RandomNormal(\
+                mean=0.0, stddev=0.5, seed=random_seed), activation='relu'))
+        model.add(Dense(dim_out,\
+                kernel_initializer=tf.keras.initializers.RandomNormal(seed=random_seed)))
+
+        model.add(Activation(tf.nn.sigmoid))
+        model.add(Reshape([16]))
+        model.trainable = False
+
+        return model
+
+    def get_predictor(self, dim_x=64, dim_y=64, dim_pred=16):
+        """
+        define model for predicting random network output
+        """
+        
+        model = get_alexnet(dropout_rate=0.35)
+        model.compile(loss='mse', optimizer=Adam(lr=1e-5))
+        return model
+
 if __name__ == '__main__':
     env = CAEnv()
     
+    tf_env = tf_py_environment.TFPyEnvironment(env)
     #   utils.validate_py_environment(env, episodes=1)
-    for my_step in range(10):
-        print('do stuff')   
-        action = np.zeros((1, env.dim_x, env.dim_y))
+    #predictor = get_alexnet(dropout_rate=0.35) #alex.get_model()
+    #predictor.compile(loss='mse', optimizer=Adam(lr=1e-5), metrics=['acc'])
     
-        action[0,   np.random.randint(64), np.random.randint(64)] = 1
+    fc_layer_params = (128,64)
+    my_net = ActorNetwork(\
+            tf_env.observation_spec(),\
+            tf_env.action_spec(),\
+            fc_layer_params=fc_layer_params\
+            )
 
-        step = env._step(np.random.randint(2, size=(64,64)))
-        adj_reward = step.reward + 10
-        print('reward: {}/{}'.format(step.reward, adj_reward))
+    my_net = ActorDistributionNetwork(\
+            tf_env.observation_spec(),\
+            tf_env.action_spec(),\
+            fc_layer_params=fc_layer_params\
+            )
+
+
+    ppo_agent = PPOAgent(\
+            tf_env.time_step_spec(),\
+            tf_env.action_spec(),\
+            actor_net=my_net\
+            )
+    
+    time_step = tf_env.reset()
+    
+    if(0):
+        action = my_net(time_step.observation, time_step.step_type)
+        
+        for my_step in range(10):
+            time_step = tf_env.step(action)
+            action = my_net(time_step.observation, time_step.step_type)
+
+            step = 0
+
+            print('step {}, reward: {}'.format(time_step.step_type, time_step.reward))
+        print(time_step)
+
+    if(0):
+        for my_step in range(1000):
+            
+            # define random actions
+            action = np.zeros((1, env.dim_x, env.dim_y), dtype=np.int32)
+
+            plane = env._state
+
+            step = env._step(action)
+            
+            if env.episode_step % 16 == 0:
+                print('step {}, reward: {}'.format(env.episode_step, step.reward))
+
