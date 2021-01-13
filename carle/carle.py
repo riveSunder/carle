@@ -4,19 +4,133 @@ import sys
 import io
 import time 
 
-import absl
-import absl.app
-import absl.flags
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
-import tensorflow as tf
-from tensorflow.keras.optimizers import Adam
-from models import get_alexnet
-#FLAGS = absl.FLAGS
+class AutomaticCellularEnvironment(nn.Module):
 
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, SpatialDropout2D, Reshape, \
-                                    AveragePooling1D, AveragePooling2D, Activation, \
-                                    Dropout, Dense, Flatten, Lambda 
+    def __init__(self, **kwargs):
+        super(AutomaticCellularEnvironment,self).__init__()
+
+        self.width = kwargs["width"] if "width" in kwargs.keys() else 128
+        self.height = kwargs["height"] if "height" in kwargs.keys() else 128
+        self.alive_rate = kwargs["alive_rate"] if "alive_rate" in kwargs.keys()\
+                else 0.0
+        
+        # instances define how many CA universes to 
+        self.instances = kwargs["instances"] if "instances" in kwargs.keys()\
+                else 1
+
+        self.set_neighborhood()
+        self.set_action_padding()
+
+        # Conway's GoL rules
+        self.birth = [3]
+        self.survive = [2,3]
+
+    def set_neighborhood(self):
+        """
+        Establish the neighborhood function as a convolutional layer
+        Moore neighborhoods are used in Life-like CA
+        """
+        
+        circular = True
+        use_cuda = True
+
+        moore_kernel = torch.tensor([[1.,1.,1.], [1.,0.,1.], [1.,1.,1.]],\
+                requires_grad=False)
+
+        if circular:
+            my_mode = "circular"
+        else:
+            my_mode = "zeros"
+
+        self.neighborhood = nn.Conv2d(1, 1, 3, padding=1,\
+                padding_mode=my_mode, bias=False)
+
+
+        if torch.cuda.is_available() and use_cuda:
+            self.device = "cuda"
+            self.neighborhood.to(self.device)
+
+            # run on multiple gpus if possible
+            self.neighborhood = nn.DataParallel(self.neighborhood)
+        else:
+            self.device = "cpu"
+            self.neighborhood.to(self.device)
+
+
+        for param in self.neighborhood.parameters():
+
+            param = moore_kernel
+            param.requres_grad = False
+
+
+    def set_action_padding(self):
+
+        self.action_width = self.width // 4 
+        self.action_height = self.height // 4 
+
+        assymetry_width = (self.width - self.action_width) % 2
+        assymetry_height = (self.height - self.action_height) % 2
+
+        self.action_width -= (self.width % 2)
+        self.action_height -= (self.width % 2)
+
+        width_padding = (self.width - self.action_width) // 2 
+        height_padding = (self.height - self.action_height) // 2
+
+        self.action_padding = nn.ZeroPad2d(padding=\
+                (width_padding, width_padding + assymetry_width,\
+                height_padding, height_padding + assymetry_height))
+
+    def reset(self):
+        
+        self.universe = 1.0 * \
+                (torch.rand(self.instances, 1, self.width, self.height)\
+                < self.alive_rate)
+
+        observation = self.universe
+
+        return observation
+
+    def step(self, action):
+
+        if type(action) is not torch.Tensor:
+            action = torch.Tensor(action)
+
+        while len(action.shape) < 4:
+            action = action.unsqueeze(0)
+
+        # this may be better as an assertion line to avoid silent failures
+        action = action[0, 0, :self.action_width, :self.action_height]
+
+        action = self.action_padding(action)
+
+        # toggle cells according to actions
+        self.universe = 1.0 * torch.logical_xor(self.universe, action)
+
+        my_neighborhood = self.neighborhood(self.universe)
+
+        universe_1 = torch.zeros_like(self.universe) 
+
+        for b in self.birth:
+            universe_1[my_neighborhood == b] = 1
+
+        for s in self.survive:
+            universe_1[self.universe*my_neighborhood == s] = 1
+
+        observation = universe_1
+        self.universe = universe_1
+
+        # This environment is open-ended free from exogenous reward,
+        # giving no done signal and a reward of 0.0
+        # episodic constraints and endogenous rewards have to be implemented
+        # by wrappers or agents themselves.
+        reward, done, info = 0.0, False, {}
+
+        return observation, reward, done, info
 
 
 class cellular_automata():
@@ -540,10 +654,39 @@ def step_test():
                 if step > max_steps: info['done'] = True
 
 
-def main(argv):
-    #ca = cellular_automata(init_prob=0.25, rule='conway')
-    #print(ca.distill(ca.plane))
-    step_test()
 
 if __name__ == '__main__':
-    absl.app.run(main)
+
+    ace = AutomaticCellularEnvironment()
+
+    obs = ace.reset()
+    
+    my_steps = 2048
+
+    action = torch.zeros(1,1,32,32)
+
+    t0 = time.time()
+    for step in range (my_steps):
+        _ = ace.step(action)
+
+    t1 = time.time()
+    print("CA updates per second with {}x vectorization = {}"\
+            .format(ace.instances, my_steps * ace.instances/(t1-t0)))
+
+
+    for instances in [4, 8, 16, 32, 64, 128, 256, 512]:
+        ace.instances = instances
+        obs = ace.reset()
+        t2 = time.time()
+
+        for step in range(my_steps):
+            _ = ace.step(action)
+        
+
+        t3 = time.time()
+        print("CA updates per second with {}x vectorization = {}"\
+                .format(ace.instances, my_steps * ace.instances/(t3-t2)))
+
+
+
+
