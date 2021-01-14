@@ -41,7 +41,7 @@ class RND2D(Motivator):
     def __init__(self, env_fn, **kwargs):
         super(RND2D, self).__init__(env_fn, **kwargs)
         
-        self.learning_rate = 3e-4
+        self.learning_rate = 1e-4
         self.curiosity_scale = 1.0
         self.rnd_dim = 16
 
@@ -56,11 +56,11 @@ class RND2D(Motivator):
         dense_nodes = (self.env.width // 8) * (self.env.height // 8)
 
         self.predictor = nn.Sequential(\
-                nn.Conv2d(1, 4, 3, padding=1, stride=1),\
+                nn.Conv2d(1, 8, 3, padding=1, stride=1),\
                 nn.ReLU(),\
                 nn.MaxPool2d(2,2,padding=0),\
                 nn.MaxPool2d(2,2,padding=0),\
-                nn.Conv2d(4, 1, 3, padding=1, stride=1),\
+                nn.Conv2d(8, 1, 3, padding=1, stride=1),\
                 nn.ReLU(),\
                 nn.MaxPool2d(2,2,padding=0),\
                 nn.Flatten(),\

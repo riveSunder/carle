@@ -75,10 +75,13 @@ if __name__ == "__main__":
     
     #high life: 23/36
     #life: 23/3
+    #mouse_maze: 12345/37
+    #walled_cities: 2345/45678
 
-    my_steps = 2048
+    my_steps = 1024
 
-    for rules, name in zip([[[2,3],[3]], [[2,3],[3,6]]], ["life", "high_life"]):
+    for rules, name in zip([[[2,3],[3]], [[1,2,3,4,5],[3,7]]],\
+            ["life", "mouse_maze"]):
         agent = RandomNetworkAgent() 
         env_fn = AutomaticCellularEnvironment 
         env = RND2D(env_fn)
@@ -86,7 +89,7 @@ if __name__ == "__main__":
         env.env.survive = rules[0]
         env.env.birth = rules[1]
         env.env.instances = 1
-        env.env.batch_size = 2
+        env.env.batch_size = 32
 
 
         action = torch.ones(env.env.instances,1,32,32)
@@ -115,8 +118,8 @@ if __name__ == "__main__":
 
     my_steps = 8192
 
-    for rules, name in zip([[[2,3],[3]], [[2,3],[3,6]]], ["life", "high_life"]):
-
+    for rules, name in zip([[[2,3],[3]], [[1,2,3,4,5],[3,7]]],\
+            ["life", "mouse_maze"]):
         agent = RandomNetworkAgent() 
         env_fn = AutomaticCellularEnvironment 
         env = RND2D(env_fn)
