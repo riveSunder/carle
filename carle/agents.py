@@ -73,9 +73,46 @@ class RandomNetworkAgent(nn.Module):
 
 if __name__ == "__main__":
     
-    
     #high life: 23/36
     #life: 23/3
+
+    my_steps = 2048
+
+    for rules, name in zip([[[2,3],[3]], [[2,3],[3,6]]], ["life", "high_life"]):
+        agent = RandomNetworkAgent() 
+        env_fn = AutomaticCellularEnvironment 
+        env = RND2D(env_fn)
+
+        env.env.survive = rules[0]
+        env.env.birth = rules[1]
+        env.env.instances = 1
+        env.env.batch_size = 2
+
+
+        action = torch.ones(env.env.instances,1,32,32)
+        obs = env.reset()
+        rewards = []
+        steps = []
+        for step in range(my_steps):
+
+            obs, reward, done, info = env.step(action)
+
+            rewards.append(reward.squeeze().detach().numpy())
+            steps.append(step)
+
+            #env.env.save_frame()
+
+            fig = plt.figure(figsize=(6,12))
+            plt.subplot(211)
+            plt.plot(steps, rewards)
+            plt.plot(steps[-1], rewards[-1], "o")
+            plt.title("ones policy, RND reward in {} CA".format(name))
+            plt.subplot(212)
+            plt.imshow(obs[0,0,:,:].detach().numpy())
+            plt.title("{} CA".format(name))
+            plt.savefig("./frames/ones_rewards_{}_step{}".format(name, step))
+            plt.close(fig)
+
     my_steps = 8192
 
     for rules, name in zip([[[2,3],[3]], [[2,3],[3,6]]], ["life", "high_life"]):
@@ -87,6 +124,7 @@ if __name__ == "__main__":
         env.env.survive = rules[0]
         env.env.birth = rules[1]
         env.env.instances = 1
+        env.env.batch_size = 2
 
 
         obs = env.reset()
