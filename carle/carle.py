@@ -141,7 +141,9 @@ class AutomaticCellularEnvironment(nn.Module):
         # giving no done signal and a reward of 0.0
         # episodic constraints and endogenous rewards have to be implemented
         # by wrappers or agents themselves.
-        reward, done, info = 0.0, False, {}
+        reward = torch.zeros(self.instances, 1)
+        done = torch.zeros(self.instances, 1)
+        info = [{}] * self.instances
 
         return observation, reward, done, info
 
@@ -313,7 +315,7 @@ if __name__ == '__main__':
     
     my_steps = 1024
 
-    action = torch.ones(1,1,32,32)
+    action = torch.ones(env.instances,1,32,32)
 
     t0 = time.time()
     for step in range (my_steps):
@@ -330,6 +332,7 @@ if __name__ == '__main__':
 
 
         for instances in [4, 8, 16, 32, 64, 128, 256]:
+            action = torch.ones(env.instances,1,32,32)
             env.instances = instances
             obs = env.reset()
             t2 = time.time()
