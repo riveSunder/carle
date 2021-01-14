@@ -313,7 +313,7 @@ if __name__ == '__main__':
 
     obs = env.reset()
     
-    my_steps = 1024
+    my_steps = 2048
 
     action = torch.ones(env.instances,1,32,32)
 
@@ -325,13 +325,13 @@ if __name__ == '__main__':
 
 
     t1 = time.time()
-    print("CA updates per second with {}x vectorization = {}"\
+    print("CA updates per second with {}x vectorization = {} and saving frames"\
             .format(env.instances, my_steps * env.instances/(t1-t0)))
 
     if(1):
 
 
-        for instances in [4, 8, 16, 32, 64, 128, 256]:
+        for instances in [1, 2, 4, 8, 16, 32, 64, 128, 256]:
             action = torch.ones(env.instances,1,32,32)
             env.instances = instances
             obs = env.reset()

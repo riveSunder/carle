@@ -2,6 +2,7 @@
 endogenous reward system for open-ended learning. 
     mcl stands for mesocorticolimbic system, aka the reward system in the human brain
 """
+import time
 import numpy as np
 
 import torch
@@ -133,7 +134,7 @@ class RND2D(Motivator):
         # update loss is a scalar used for backprop
         update_loss = torch.mean(loss)
 
-        self.update_predictor(loss)
+        self.update_predictor(update_loss)
 
         return loss
 
@@ -150,7 +151,7 @@ class RND2D(Motivator):
 
         obs, reward, done, info = self.env.step(action)
 
-        rnd_bonus = self.get_bonus_update(obs)
+        rnd_bonus = self.get_bonus_update(obs).unsqueeze(1)
 
         reward += self.curiosity_scale * rnd_bonus
 
@@ -180,20 +181,43 @@ if __name__ == "__main__":
     cumulative_reward = 0.0
     obs = env.reset()
 
-    rewards = []
+    if(0):
+        rewards = []
 
-    for my_step in range(number_steps):
+        for my_step in range(number_steps):
 
-        obs, reward, done, info = env.step(action)
+            obs, reward, done, info = env.step(action)
 
-        cumulative_reward += reward
-        rewards.append(reward[0,0].detach().numpy())
+            cumulative_reward += reward
+            rewards.append(reward[0,0].detach().numpy())
 
+        
+        print("cumulative reward = {}".format(cumulative_reward))
+
+        plt.figure()
+        plt.plot(rewards)
+        plt.title("rnd over time steps")
+        plt.show()
     
-    print("cumulative reward = {}".format(cumulative_reward))
+        print("environment with random network distillation wrapper")
 
-    plt.figure()
-    plt.plot(rewards)
-    plt.show()
+    action = torch.ones(env.env.instances,1,32,32)
 
+    my_steps = 2048
+    if(1):
+
+
+        for instances in [1, 2, 4, 8, 16, 32, 64, 128, 256]:
+            env.env.instances = instances
+            action = torch.ones(env.env.instances,1,32,32)
+            obs = env.reset()
+            t2 = time.time()
+
+            for step in range(my_steps):
+                _ = env.step(action)
+            
+
+            t3 = time.time()
+            print("CA updates per second with {}x vectorization = {}"\
+                    .format(env.env.instances, my_steps * env.env.instances/(t3-t2)))
 
