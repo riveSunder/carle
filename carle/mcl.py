@@ -48,18 +48,19 @@ class RND2D(Motivator):
         self.initialize_predictor()
         self.initialize_random_network()
 
+        self.buffer_length = 0
+        self.batch_size = 8
+
     def initialize_predictor(self):
 
         dense_nodes = (self.env.width // 8) * (self.env.height // 8)
 
         self.predictor = nn.Sequential(\
-                nn.Conv2d(1, 8, 3, padding=1, stride=1),\
+                nn.Conv2d(1, 4, 3, padding=1, stride=1),\
                 nn.ReLU(),\
                 nn.MaxPool2d(2,2,padding=0),\
-                nn.Conv2d(8, 8, 3, padding=1, stride=1),\
-                nn.ReLU(),\
                 nn.MaxPool2d(2,2,padding=0),\
-                nn.Conv2d(8, 1, 3, padding=1, stride=1),\
+                nn.Conv2d(4, 1, 3, padding=1, stride=1),\
                 nn.ReLU(),\
                 nn.MaxPool2d(2,2,padding=0),\
                 nn.Flatten(),\
@@ -75,13 +76,11 @@ class RND2D(Motivator):
         dense_nodes = (self.env.width // 8) * (self.env.height // 8)
 
         self.random_network = nn.Sequential(\
-                nn.Conv2d(1, 8, 3, padding=1, stride=1),\
+                nn.Conv2d(1, 4, 3, padding=1, stride=1),\
                 nn.ReLU(),\
                 nn.MaxPool2d(2,2,padding=0),\
-                nn.Conv2d(8, 8, 3, padding=1, stride=1),\
-                nn.ReLU(),\
                 nn.MaxPool2d(2,2,padding=0),\
-                nn.Conv2d(8, 1, 3, padding=1, stride=1),\
+                nn.Conv2d(4, 1, 3, padding=1, stride=1),\
                 nn.ReLU(),\
                 nn.MaxPool2d(2,2,padding=0),\
                 nn.Flatten(),\
@@ -138,6 +137,28 @@ class RND2D(Motivator):
 
         return loss
 
+    def get_bonus_accumulate(self, obs):
+
+        if self.buffer_length == 0:
+            self.predictor.zero_grad()
+            self.accumulate_loss = 0.0
+
+        loss = self.get_bonus(obs)
+
+        self.accumulate_loss += torch.mean(loss)
+
+        self.buffer_length += 1
+
+        if self.buffer_length >= self.batch_size:
+            self.accumulate_loss = self.accumulate_loss / self.batch_size
+
+            self.accumulate_loss.backward()
+
+            self.buffer_length = 0
+
+        return loss
+
+
     def get_bonus_only(self, obs):
 
         with torch.no_grad():
@@ -151,7 +172,7 @@ class RND2D(Motivator):
 
         obs, reward, done, info = self.env.step(action)
 
-        rnd_bonus = self.get_bonus_update(obs).unsqueeze(1)
+        rnd_bonus = self.get_bonus_accumulate(obs).unsqueeze(1)
 
         reward += self.curiosity_scale * rnd_bonus
 
@@ -181,7 +202,7 @@ if __name__ == "__main__":
     cumulative_reward = 0.0
     obs = env.reset()
 
-    if(0):
+    if(1):
         rewards = []
 
         for my_step in range(number_steps):
@@ -207,17 +228,20 @@ if __name__ == "__main__":
     if(1):
 
 
-        for instances in [1, 2, 4, 8, 16, 32, 64, 128, 256]:
-            env.env.instances = instances
-            action = torch.ones(env.env.instances,1,32,32)
-            obs = env.reset()
-            t2 = time.time()
+        for batch_size in [1,4,8,16]:
+            env.batch_size = batch_size
+            print("batch size = {}".format(env.batch_size))
+            for instances in [1, 2, 4, 8, 16, 32, 64, 128, 256]:
+                env.env.instances = instances
+                action = torch.ones(env.env.instances,1,32,32)
+                obs = env.reset()
+                t2 = time.time()
 
-            for step in range(my_steps):
-                _ = env.step(action)
-            
+                for step in range(my_steps):
+                    _ = env.step(action)
+                
 
-            t3 = time.time()
-            print("CA updates per second with {}x vectorization = {}"\
-                    .format(env.env.instances, my_steps * env.env.instances/(t3-t2)))
+                t3 = time.time()
+                print("CA updates per second with {}x vectorization = {}"\
+                        .format(env.env.instances, my_steps * env.env.instances/(t3-t2)))
 
