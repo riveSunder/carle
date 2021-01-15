@@ -21,10 +21,15 @@ As an example, CARLE includes an environment wrapper that implements random netw
 <br>
 Conway's Game of Life (left) and "Mouse Maze" (right) CAs with RND rewards, acted on by an agent that toggles every cell in the action space at every time step. 
 <br>
+<br>
+<br>
+<br>
 
 <img src="/carle/assets/rnd_random.gif">
 <br>
 Conway's Game of Life (left) and "Mouse Maze" (right) CAs with RND rewards, acted on by an agent that randomly toggles 2% of cells in the action space at every time step. 
+<br>
+<br>
 <br>
 
 </div>
@@ -35,6 +40,8 @@ The examples demonstrate that RND likes complex chaos, whether or not that compl
 <img src="/carle/assets/rn_experiments/gosper_glider_surprise.gif">
 <br>
 <img src="/carle/assets/rn_experiments/screen_tb_gosper_surprise_reward.png">
+<br>
+<br>
 <br>
 A Gosper Glider gun provides a diminishing RND reward over time, until gliders wrap around and cause chaos.  
 </div>
