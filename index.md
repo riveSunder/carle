@@ -101,7 +101,7 @@ CA grids represent the surface of a toroid, _i.e._ the unverse wraps around on i
 
 ## Timeline
 
-I'm currently looking for a conference to host CARLE as an official competition. The timeline for participation in the contest will ultimately depend in part 
+I'm currently looking for a conference to host CARLE as an official competition. The timeline for participation for any official competition will ultimately depend on the conference schedule, but here is a rough outline.
 
 * 2021 March: Competition Launch
 * 2021 March to May: Beta Round. In this round participants are encouraged to experiment with CARLE, raise issues, provide feedback, and make comments that help make CARLE and the associated challenge more interesting.
