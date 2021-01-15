@@ -35,9 +35,16 @@ Conway's Game of Life with an agent that randomly toggles 2% cells in the action
 <br>
 "Mouse Maze" CA with an agent that randomly toggles 2% cells in the action space at every time step. 
 <br>
+
 </div>
 
-The examples demonstrate that RND likes complex chaos, whether or not that complexity corresponds to what humans would consider interesting machines. Also, curiosity driven rewards can be expected to be sensitive to each specific set of CA rules.Carle's Game will encourage participants to come up with a flexible scheme for encouraging creative exploration across a number of different CA rules that may have vastly different characteristics. 
+The examples demonstrate that RND likes complex chaos, whether or not that complexity corresponds to what humans would consider interesting machines. Also, curiosity driven rewards can be expected to be sensitive to each specific set of CA rules.Carle's Game will encourage participants to come up with a flexible scheme for encouraging creative exploration across a number of different CA rules that may have vastly different characteristics. A more contrived example, shown below, demonstrates RND getting "bored" by a [Gosper Glider Gun](https://www.conwaylife.com/wiki/Gosper_glider_gun), until gliders wrap around the universe and collide with the machine, creating exciting chaos. 
+
+<div align="center">
+<img src="/carle/assets/rnd_experiments/gosper_glider_surprise.gif">
+<br>
+<img src="/carle/assets/rnd_experiments/screen_tb_gosper_surprise_reward.png">
+</div>
 
 ## Flexibility
 
@@ -89,6 +96,8 @@ Number of updates per second for 64x64 CA grid universes running under Conway's 
 CARLE is formulated as a reinforcement learning environment for binary CA grid universes. Although it follows RL patterns, it doesn't provide a non-zero reward of done signal on it's own, that task is left as an exercise to participants. 
 
 The action space is 32x32 and is expected to take binary values: 1 to toggle the cell at each location and 0 to leave it alone. The observation space is nominally 64x64 but can be adjusted by changing `env.height` and `env.width`, and may be changed in the final training and/or test environments. Observations are provided as Nx1xHxW tensors, and actions are expected in the same format. Notably, N can be greater than 1 when training and this allows for many CA universes to be updated in parallel, this is adjusted by changing the `env.instances` variable.  
+
+CA grids represent the surface of a toroid, _i.e._ the unverse wraps around on itself like Pac-Man. 
 
 ## Timeline
 
