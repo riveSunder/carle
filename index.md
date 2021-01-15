@@ -17,33 +17,26 @@ While CARLE is formulated as a reinforcement learning environment and uses the t
 As an example, CARLE includes an environment wrapper that implements random network distillation (RND, [Burda et al. 2018](https://arxiv.org/abs/1810.12894)) as a curiosity reward. The following animations demonstrate RND rewards for a "toggle every toggle" policy and a random policy that toggles 2% of cells for Conway's Game of life (B3/S23) and "Mouse Maze" (B37/S12345). 
 
 <div align="center">
-<img src="/carle/assets/rnd_ones_life.gif">
+<img src="/carle/assets/rnd_ones.gif">
 <br>
-Conway's Game of Life with an agent that toggles every cell in the action space at every time step. 
-<br>
-<img src="/carle/assets/rnd_ones_mouse.gif">
-<br>
-"Mouse Mazze" CA with an agent that toggles every cell in the action space at every time step. 
+Conway's Game of Life (left) and "Mouse Maze" (right) CAs with RND rewards, acted on by an agent that toggles every cell in the action space at every time step. 
 <br>
 
-<img src="/carle/assets/rnd_random_life.gif">
+<img src="/carle/assets/rnd_random.gif">
 <br>
-Conway's Game of Life with an agent that randomly toggles 2% cells in the action space at every time step. 
-<br>
-
-<img src="/carle/assets/rnd_random_mouse.gif">
-<br>
-"Mouse Maze" CA with an agent that randomly toggles 2% cells in the action space at every time step. 
+Conway's Game of Life (left) and "Mouse Maze" (right) CAs with RND rewards, acted on by an agent that randomly toggles 2% of cells in the action space at every time step. 
 <br>
 
 </div>
 
-The examples demonstrate that RND likes complex chaos, whether or not that complexity corresponds to what humans would consider interesting machines. Also, curiosity driven rewards can be expected to be sensitive to each specific set of CA rules.Carle's Game will encourage participants to come up with a flexible scheme for encouraging creative exploration across a number of different CA rules that may have vastly different characteristics. A more contrived example, shown below, demonstrates RND getting "bored" by a [Gosper Glider Gun](https://www.conwaylife.com/wiki/Gosper_glider_gun), until gliders wrap around the universe and collide with the machine, creating exciting chaos. 
+The examples demonstrate that RND likes complex chaos, whether or not that complexity corresponds to what humans would consider interesting machines. Also, curiosity driven rewards can be expected to be sensitive to each specific set of CA rules. Carle's Game will encourage participants to come up with a flexible scheme for encouraging creative exploration across a number of different CA rules that may have vastly different characteristics. A more contrived example, shown below, demonstrates RND getting "bored" by a [Gosper Glider Gun](https://www.conwaylife.com/wiki/Gosper_glider_gun), until gliders wrap around the universe and collide with the machine, creating exciting chaos. 
 
 <div align="center">
-<img src="/carle/assets/rnd_experiments/gosper_glider_surprise.gif">
+<img src="/carle/assets/rn_experiments/gosper_glider_surprise.gif">
 <br>
-<img src="/carle/assets/rnd_experiments/screen_tb_gosper_surprise_reward.png">
+<img src="/carle/assets/rn_experiments/screen_tb_gosper_surprise_reward.png">
+<br>
+A Gosper Glider gun provides a diminishing RND reward over time, until gliders wrap around and cause chaos.  
 </div>
 
 ## Flexibility
