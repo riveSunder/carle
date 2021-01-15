@@ -109,45 +109,44 @@ if __name__ == "__main__":
     #mouse_maze: 12345/37
     #walled_cities: 2345/45678
 
-    if(0):
-        my_steps = 512
+    my_steps = 512
 
-        for rules, name in zip([[[2,3],[3]], [[1,2,3,4,5],[3,7]]],\
-                ["life", "mouse_maze"]):
-            env_fn = AutomaticCellularEnvironment 
-            env = RND2D(env_fn)
+    for rules, name in zip([[[2,3],[3]], [[1,2,3,4,5],[3,7]]],\
+            ["life", "mouse_maze"]):
+        env_fn = AutomaticCellularEnvironment 
+        env = RND2D(env_fn)
 
-            env.env.survive = rules[0]
-            env.env.birth = rules[1]
-            env.env.instances = 1
-            env.env.batch_size = 32
+        env.env.survive = rules[0]
+        env.env.birth = rules[1]
+        env.env.instances = 1
+        env.env.batch_size = 32
 
 
-            action = torch.ones(env.env.instances,1,32,32)
-            obs = env.reset()
-            rewards = []
-            steps = []
-            for step in range(my_steps):
+        action = torch.ones(env.env.instances,1,32,32)
+        obs = env.reset()
+        rewards = []
+        steps = []
+        for step in range(my_steps):
 
-                obs, reward, done, info = env.step(action)
+            obs, reward, done, info = env.step(action)
 
-                rewards.append(reward.squeeze().detach().numpy())
-                steps.append(step)
+            rewards.append(reward.squeeze().detach().numpy())
+            steps.append(step)
 
-                #env.env.save_frame()
+            #env.env.save_frame()
 
-                fig = plt.figure(figsize=(6,12))
-                plt.subplot(211)
-                plt.plot(steps, rewards)
-                plt.plot(steps[-1], rewards[-1], "o")
-                plt.title("ones policy, RND reward in {} CA".format(name))
-                plt.subplot(212)
-                plt.imshow(obs[0,0,:,:].detach().numpy())
-                plt.title("{} CA".format(name))
-                plt.savefig("./frames/ones_rewards_{}_step{}".format(name, step))
-                plt.close(fig)
+            fig = plt.figure(figsize=(6,12))
+            plt.subplot(211)
+            plt.plot(steps, rewards)
+            plt.plot(steps[-1], rewards[-1], "o")
+            plt.title("ones policy, RND reward in {} CA".format(name))
+            plt.subplot(212)
+            plt.imshow(obs[0,0,:,:].detach().numpy())
+            plt.title("{} CA".format(name))
+            plt.savefig("./frames/ones_rewards_{}_step{}".format(name, step))
+            plt.close(fig)
 
-    my_steps = 1024
+    my_steps = 2048
 
     action = torch.ones(1,1,32,32)
     for rules, name in zip([[[2,3],[3]], [[1,2,3,4,5],[3,7]]],\
@@ -159,7 +158,7 @@ if __name__ == "__main__":
         env.env.survive = rules[0]
         env.env.birth = rules[1]
         env.env.instances = 1
-        env.env.batch_size = 2
+        env.env.batch_size = 32
 
 
         obs = env.reset()
@@ -184,5 +183,5 @@ if __name__ == "__main__":
             plt.subplot(212)
             plt.imshow(obs[0,0,:,:].detach().numpy())
             plt.title("{} CA".format(name))
-            plt.savefig("./frames/rewards_{}_step{}".format(name, step))
+            plt.savefig("./frames/random_rewards_{}_step{}".format(name, step))
             plt.close(fig)

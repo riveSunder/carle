@@ -41,7 +41,7 @@ class RND2D(Motivator):
     def __init__(self, env_fn, **kwargs):
         super(RND2D, self).__init__(env_fn, **kwargs)
         
-        self.learning_rate = 1e-4
+        self.learning_rate = 1e-2
         self.curiosity_scale = 1.0
         self.rnd_dim = 16
 
