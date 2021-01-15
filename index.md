@@ -5,6 +5,7 @@
 layout: home
 ---
 
+## An Open-Ended Challenge in Simple Complexity, Exploration, and Machine Creativity
 
 Carle's Game is an open-ended challenge for creative machine intelligences based on the Cellular Automata Reinforcement Learning Environment (CARLE). CARLE is a flexible, fast environment that supports arbitrary Life-like cellular automata (CA) rule sets. 
 
