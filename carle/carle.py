@@ -57,14 +57,15 @@ class AutomaticCellularEnvironment(nn.Module):
 
 
         if torch.cuda.is_available() and use_cuda:
-            self.device = "cuda"
-            self.neighborhood.to(self.device)
+            self.my_device = "cuda"
+            self.neighborhood.to(self.my_device)
+            self.to(self.my_device)
 
             # run on multiple gpus if possible
-            self.neighborhood = nn.DataParallel(self.neighborhood)
+            #self.neighborhood = nn.DataParallel(self.neighborhood)
         else:
-            self.device = "cpu"
-            self.neighborhood.to(self.device)
+            self.my_device = "cpu"
+            self.neighborhood.to(self.my_device)
 
         for param in self.neighborhood.parameters():
             param.requres_grad = False
@@ -98,6 +99,7 @@ class AutomaticCellularEnvironment(nn.Module):
                 (torch.rand(self.instances, 1, self.width, self.height)\
                 < self.alive_rate)
 
+        self.universe = self.universe.to(self.my_device)
         observation = self.universe
 
         self.instance_id = str(int(time.time()))
@@ -112,6 +114,8 @@ class AutomaticCellularEnvironment(nn.Module):
 
         while len(action.shape) < 4:
             action = action.unsqueeze(0)
+
+        action = action.to(self.my_device)
 
         # this may be better as an assertion line to avoid silent failures
         action = action[0, 0, :self.action_width, :self.action_height]
@@ -141,7 +145,7 @@ class AutomaticCellularEnvironment(nn.Module):
         # giving no done signal and a reward of 0.0
         # episodic constraints and endogenous rewards have to be implemented
         # by wrappers or agents themselves.
-        reward = torch.zeros(self.instances, 1)
+        reward = torch.zeros(self.instances, 1).to(self.my_device)
         done = torch.zeros(self.instances, 1)
         info = [{}] * self.instances
 
@@ -169,9 +173,10 @@ class AutomaticCellularEnvironment(nn.Module):
         (at index [0,0,:,:] from self.universe tensor)
         """
 
+            
         skimage.io.imsave("./frames/frame{}_step{}.png"\
                 .format(self.instance_id, self.step_number), \
-                np.uint8(255 * self.universe[0,0,:,:].detach().numpy()))
+                np.uint8(255 * self.universe[0,0,:,:].detach().cpu().numpy()))
 
 
 
@@ -331,7 +336,7 @@ if __name__ == '__main__':
     if(1):
 
 
-        for instances in [1, 2, 4, 8, 16, 32, 64, 128, 256]:
+        for instances in [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096]:
             action = torch.ones(env.instances,1,32,32)
             env.instances = instances
             obs = env.reset()
