@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from carle import AutomaticCellularEnvironment
-from mcl import RND2D 
+from mcl import RND2D, AE2D 
 
 import matplotlib.pyplot as plt
 
@@ -110,78 +110,98 @@ if __name__ == "__main__":
     #walled_cities: 2345/45678
 
     my_steps = 512
+    fs = 18
 
-    for rules, name in zip([[[2,3],[3]], [[1,2,3,4,5],[3,7]]],\
-            ["life", "mouse_maze"]):
-        env_fn = AutomaticCellularEnvironment 
-        env = RND2D(env_fn)
+    for wrapper, wrapper_name in zip([AE2D, RND2D], ["AE2D", "RND2D"]):
+        for rules, name in zip([[[2,3],[3]], [[1,2,3,4,5],[3,7]]],\
+                ["life", "mouse_maze"]):
+            env_fn = AutomaticCellularEnvironment 
+            env = wrapper(env_fn)
 
-        env.env.survive = rules[0]
-        env.env.birth = rules[1]
-        env.env.instances = 1
-        env.env.batch_size = 32
-
-
-        action = torch.ones(env.env.instances,1,32,32)
-        obs = env.reset()
-        rewards = []
-        steps = []
-        for step in range(my_steps):
-
-            obs, reward, done, info = env.step(action)
-
-            rewards.append(reward.squeeze().detach().numpy())
-            steps.append(step)
-
-            #env.env.save_frame()
-
-            fig = plt.figure(figsize=(6,12))
-            plt.subplot(211)
-            plt.plot(steps, rewards)
-            plt.plot(steps[-1], rewards[-1], "o")
-            plt.title("ones policy, RND reward in {} CA".format(name))
-            plt.subplot(212)
-            plt.imshow(obs[0,0,:,:].detach().numpy())
-            plt.title("{} CA".format(name))
-            plt.savefig("./frames/ones_rewards_{}_step{}".format(name, step))
-            plt.close(fig)
-
-    my_steps = 2048
-
-    action = torch.ones(1,1,32,32)
-    for rules, name in zip([[[2,3],[3]], [[1,2,3,4,5],[3,7]]],\
-            ["life", "mouse_maze"]):
-        agent = RandomAgent() 
-        env_fn = AutomaticCellularEnvironment 
-        env = RND2D(env_fn)
-
-        env.env.survive = rules[0]
-        env.env.birth = rules[1]
-        env.env.instances = 1
-        env.env.batch_size = 32
+            env.env.survive = rules[0]
+            env.env.birth = rules[1]
+            env.env.instances = 1
+            env.env.batch_size = 32
 
 
-        obs = env.reset()
-        rewards = []
-        steps = []
-        print("toggle rate: ", action.mean())
-        for step in range(my_steps):
+            action = torch.zeros(env.env.instances, 1, \
+                   env.env.action_width, env.env.action_height)
+    
+            for ii in range(1,30,14):
+                action[0,0,8:16,ii+0:ii+3] = 1.0
+                action[0,0,9,ii+1] = 0.0
+                action[0,0,14,ii+1] = 0.0
+            obs = env.reset()
+            rewards = []
+            steps = []
+            for step in range(my_steps):
 
-            action = agent(obs)
-            obs, reward, done, info = env.step(action)
+                obs, reward, done, info = env.step(action)
 
-            rewards.append(reward.squeeze().detach().numpy())
-            steps.append(step)
+                rewards.append(reward.squeeze().detach().cpu().numpy())
+                steps.append(step)
 
-            #env.env.save_frame()
+                #env.env.save_frame()
 
-            fig = plt.figure(figsize=(6,12))
-            plt.subplot(211)
-            plt.plot(steps, rewards)
-            plt.plot(steps[-1], rewards[-1], "o")
-            plt.title("RND reward in {} CA".format(name))
-            plt.subplot(212)
-            plt.imshow(obs[0,0,:,:].detach().numpy())
-            plt.title("{} CA".format(name))
-            plt.savefig("./frames/random_rewards_{}_step{}".format(name, step))
-            plt.close(fig)
+                fig = plt.figure(figsize=(6,12))
+                plt.subplot(211)
+                plt.plot(steps, rewards, lw=3)
+                plt.plot(steps[-1], rewards[-1], "o", ms=5)
+                plt.xlabel("steps", fontsize=fs)
+                plt.xticks(fontsize=fs-2)
+                plt.yticks(fontsize=fs-2)
+                plt.title("{} CA with {} reward\n"\
+                        .format(name, wrapper_name), fontsize=fs+4)
+                plt.subplot(212)
+                plt.imshow(obs[0,0,:,:].detach().cpu().numpy(),cmap="magma")
+                plt.xticks(fontsize=fs-2)
+                plt.yticks(fontsize=fs-2)
+                #plt.tight_layout()
+                plt.savefig("./frames/pentadecathlon_{}wrapper_{}_step{}"\
+                        .format(wrapper_name, name, step))
+                plt.close(fig)
+
+        my_steps = 1024
+
+        action = torch.ones(1,1,32,32)
+        for rules, name in zip([[[2,3],[3]], [[1,2,3,4,5],[3,7]]],\
+                ["life", "mouse_maze"]):
+            agent = RandomAgent() 
+            env_fn = AutomaticCellularEnvironment 
+            env = wrapper(env_fn)
+
+            env.env.survive = rules[0]
+            env.env.birth = rules[1]
+            env.env.instances = 1
+            env.env.batch_size = 32
+
+
+            obs = env.reset()
+            rewards = []
+            steps = []
+            print("toggle rate: ", action.mean())
+            for step in range(my_steps):
+
+                action = agent(obs)
+                obs, reward, done, info = env.step(action)
+
+                rewards.append(reward.squeeze().detach().cpu().numpy())
+                steps.append(step)
+
+                fig = plt.figure(figsize=(6,12))
+                plt.subplot(211)
+                plt.plot(steps, rewards, lw=3)
+                plt.plot(steps[-1], rewards[-1], "o", ms=5)
+                plt.xlabel("steps", fontsize=fs)
+                plt.xticks(fontsize=fs-2)
+                plt.yticks(fontsize=fs-2)
+                plt.title("{} CA with {} reward"\
+                        .format(name, wrapper_name), fontsize=fs+4)
+                plt.subplot(212)
+                plt.imshow(obs[0,0,:,:].detach().cpu().numpy(),cmap="magma")
+                plt.xticks(fontsize=fs-2)
+                plt.yticks(fontsize=fs-2)
+                #plt.tight_layout()
+                plt.savefig("./frames/random_{}wrapper_{}_step{}"\
+                        .format(wrapper_name, name, step))
+                plt.close(fig)
