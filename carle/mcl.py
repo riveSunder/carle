@@ -41,7 +41,8 @@ class RND2D(Motivator):
     def __init__(self, env_fn, **kwargs):
         super(RND2D, self).__init__(env_fn, **kwargs)
         
-        self.learning_rate = 1e-2
+        self.learning_rate = 1e-3
+
         self.curiosity_scale = 1.0
         self.rnd_dim = 16
 
@@ -50,6 +51,8 @@ class RND2D(Motivator):
 
         self.buffer_length = 0
         self.batch_size = 8
+
+        self.updates = 0
 
     def initialize_predictor(self):
 
@@ -112,6 +115,8 @@ class RND2D(Motivator):
 
         self.optimizer.step()
 
+        self.updates += 1
+
     def get_bonus(self, obs):
 
         target = self.random_forward(obs)
@@ -152,8 +157,7 @@ class RND2D(Motivator):
         if self.buffer_length >= self.batch_size:
             self.accumulate_loss = self.accumulate_loss / self.batch_size
 
-            self.accumulate_loss.backward()
-
+            self.update_predictor(self.accumulate_loss)
             self.buffer_length = 0
 
         return loss
@@ -188,63 +192,197 @@ class RND2D(Motivator):
 
         self.to(self.env.my_device)
 
+        self.updates = 0
+
         return obs
 
-    
+
+class AE2D(RND2D):
+
+    def __init__(self, env_fn, **kwargs):
+        super(AE2D, self).__init__(env_fn, **kwargs)
+        self.learning_rate = 1e-3
+
+    def initialize_random_network(self):
+        pass
+
+    def forward(self, obs):
+
+        prediction = self.predictor(obs)
+
+        prediction = prediction.reshape(\
+                self.env.instances, 1, self.env.height, self.env.width)
+
+        return prediction
+
+    def initialize_predictor(self):
+
+        dense_in = (self.env.width // 8) * (self.env.height // 8)
+        dense_out = (self.env.width) * (self.env.height)
+
+        if(0):
+            self.predictor = nn.Sequential(\
+                    nn.Conv2d(1, 8, 3, padding=1, stride=1),\
+                    nn.ReLU(),\
+                    nn.MaxPool2d(2,2,padding=0),\
+                    nn.Conv2d(8, 2, 3, padding=1, stride=1),\
+                    nn.ReLU(),\
+                    nn.MaxPool2d(2,2,padding=0),\
+                    nn.ConvTranspose2d(2, 1, 4, padding=1, stride=2),\
+                    nn.ReLU(),\
+                    nn.ConvTranspose2d(1, 1, 4, padding=1, stride=2),\
+                    nn.Sigmoid()\
+                    )
+        else:
+            self.predictor = nn.Sequential(\
+                    nn.Flatten(),\
+                    nn.Linear(dense_out, 1024, bias=False),\
+                    nn.ReLU(),\
+                    nn.Linear(1024, 256, bias=False),\
+                    nn.ReLU(),\
+                    nn.Linear(256, dense_out, bias=False),\
+                    nn.Sigmoid()\
+                    )
+
+
+        self.optimizer = torch.optim.Adam(self.predictor.parameters(),\
+                lr=self.learning_rate)
+
+    def update_predictor(self, loss):
+
+        loss.backward()
+
+        self.optimizer.step()
+
+    def get_bonus(self, obs):
+
+        prediction = self.forward(obs)
+
+        loss = torch.mean(torch.abs((obs-prediction)**2),\
+                dim=[1,2,3])
+
+        # loss is a tensor used for vectorized rnd reward bonuses
+        return loss
+
+    def get_bonus_update(self, obs):
+
+        self.predictor.zero_grad()
+
+        # loss is a tensor used for vectorized rnd reward bonuses
+        loss = self.get_bonus(obs)
+
+        # update loss is a scalar used for backprop
+        update_loss = torch.mean(loss)
+
+        self.update_predictor(update_loss)
+
+        return loss
+
+    def get_bonus_accumulate(self, obs):
+
+        if self.buffer_length == 0:
+            self.predictor.zero_grad()
+            self.accumulate_loss = 0.0
+
+        loss = self.get_bonus(obs)
+
+        self.accumulate_loss += torch.mean(loss)
+
+        self.buffer_length += 1
+
+        if self.buffer_length >= self.batch_size:
+            self.accumulate_loss = self.accumulate_loss / self.batch_size
+
+            self.update_predictor(self.accumulate_loss)
+
+            self.buffer_length = 0
+
+        return loss
+
+
+    def get_bonus_only(self, obs):
+
+        with torch.no_grad():
+
+            loss = self.get_bonus(obs)
+
+        return loss
 
 
 if __name__ == "__main__":
 
+
+
     env_fn = AutomaticCellularEnvironment 
     env = RND2D(env_fn)
 
-    action = torch.ones(env.env.instances, 1, \
-           env.env.action_width, env.env.action_height)
-    number_steps = 1000
+    number_steps = 500
 
-    cumulative_reward = 0.0
-    obs = env.reset()
+    rewards = {}
 
-    if(1):
-        rewards = []
+    plt.figure()
+    for batch_size in [1, 8, 16]:
 
-        for my_step in range(number_steps):
-
-            obs, reward, done, info = env.step(action)
-
-            cumulative_reward += reward
-            rewards.append(reward[0,0].detach().cpu().numpy())
-
-        
-        print("cumulative reward = {}".format(cumulative_reward))
-
-        plt.figure()
-        plt.plot(rewards)
-        plt.title("rnd over time steps")
-        plt.show()
+        for wrapper, name in zip([AE2D, RND2D], ["AE", "RND"]):
+            action = torch.zeros(env.env.instances, 1, \
+                   env.env.action_width, env.env.action_height)
     
-        print("environment with random network distillation wrapper")
+            action[0,0,4:6,16] = 1.0
+            action[0,0,6,15] = 1.0
+            action[0,0,6,17] = 1.0
+            action[0,0,7:11,16] = 1.0
+            action[0,0,11,15] = 1.0
+            action[0,0,11,17] = 1.0
+            action[0,0,12:14,16] = 1.0
 
-    action = torch.ones(env.env.instances,1,32,32)
-
-    my_steps = 2048
-    if(1):
-
-
-        for batch_size in [1,4,8,16]:
+            env = wrapper(env_fn)
             env.batch_size = batch_size
-            print("batch size = {}".format(env.batch_size))
-            for instances in [1, 2, 4, 8, 16, 32, 64, 128, 256, 512]:
-                env.env.instances = instances
-                action = torch.ones(env.env.instances,1,32,32)
+            name += str(batch_size)
+            rewards[name] = []
+
+            cumulative_reward = 0.0
+            obs = env.reset()
+
+            for my_step in range(number_steps):
+
+                obs, reward, done, info = env.step(action)
+                action *= 0
+
+                cumulative_reward += reward
+                rewards[name].append(reward[0,0].detach().cpu().numpy())
+            
+            print("cumulative reward = {}".format(cumulative_reward))
+
+            plt_index = 1 + 1 * ("rnd" in name.lower())
+            plt.subplot(1,2,plt_index)
+            plt.plot(rewards[name], label=name)
+            plt.legend()
+            plt.title("{} exploration bonus ".format(name))
+        
+            action = torch.ones(env.env.instances,1,32,32)
+
+
+            if(1):
+                print("throughput with {} bonus wrapper:".format(name))
+
+                my_steps = 4096
                 obs = env.reset()
-                t2 = time.time()
 
-                for step in range(my_steps):
-                    _ = env.step(action)
-                
+                env.batch_size = batch_size
+                print("batch size = {}".format(env.batch_size))
+                for instances in [1, 16, 256]:
+                    env.env.instances = instances
+                    action = torch.ones(env.env.instances,1,32,32)
+                    obs = env.reset()
+                    t2 = time.time()
 
-                t3 = time.time()
-                print("CA updates per second with {}x vectorization = {}"\
-                        .format(env.env.instances, my_steps * env.env.instances/(t3-t2)))
+                    for step in range(my_steps):
+                        _ = env.step(action)
+                    
 
+                    t3 = time.time()
+                    print("CA updates per second with {}x vectorization = {}"\
+                            .format(env.env.instances, my_steps * env.env.instances/(t3-t2)))
+
+    plt.legend()
+    plt.show()
