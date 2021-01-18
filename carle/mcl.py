@@ -170,6 +170,7 @@ class RND2D(Motivator):
 
     def step(self, action):
 
+        action = action.to(self.env.my_device)
         obs, reward, done, info = self.env.step(action)
 
         rnd_bonus = self.get_bonus_accumulate(obs).unsqueeze(1)
@@ -184,6 +185,8 @@ class RND2D(Motivator):
         self.initialize_random_network()
 
         obs = self.env.reset()
+
+        self.to(self.env.my_device)
 
         return obs
 
@@ -210,7 +213,7 @@ if __name__ == "__main__":
             obs, reward, done, info = env.step(action)
 
             cumulative_reward += reward
-            rewards.append(reward[0,0].detach().numpy())
+            rewards.append(reward[0,0].detach().cpu().numpy())
 
         
         print("cumulative reward = {}".format(cumulative_reward))
@@ -231,7 +234,7 @@ if __name__ == "__main__":
         for batch_size in [1,4,8,16]:
             env.batch_size = batch_size
             print("batch size = {}".format(env.batch_size))
-            for instances in [1, 2, 4, 8, 16, 32, 64, 128, 256]:
+            for instances in [1, 2, 4, 8, 16, 32, 64, 128, 256, 512]:
                 env.env.instances = instances
                 action = torch.ones(env.env.instances,1,32,32)
                 obs = env.reset()
