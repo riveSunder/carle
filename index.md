@@ -43,9 +43,9 @@ Conway's Game of Life shown with associated RND (left) and autoencoder loss (rig
 <br>
 <br>
 
-<img src="/carle/assets/oscillator_policy_mm4x_ae_rnd.gif">
+<img src="/carle/assets/oscillator_policy_mm1x_ae_rnd.gif">
 <br>
-Mouse Maze shown with associated RND (left) and autoencoder loss (right) bonuses. The policy in this case is the same hand-coded oscillator protocol as before, but of course it doesn't generate an oscillator under this rule set. This animation displays every 4th frame.  
+Mouse Maze shown with associated RND (left) and autoencoder loss (right) bonuses. The policy in this case is the same hand-coded oscillator protocol as before, but of course it doesn't generate an oscillator under this rule set. 
 <br>
 <br>
 <br>
