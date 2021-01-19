@@ -137,6 +137,7 @@ if __name__ == "__main__":
             for step in range(my_steps):
 
                 obs, reward, done, info = env.step(action)
+                action *= 0.0
 
                 rewards.append(reward.squeeze().detach().cpu().numpy())
                 steps.append(step)
