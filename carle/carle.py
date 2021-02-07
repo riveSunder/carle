@@ -10,10 +10,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class AutomaticCellularEnvironment(nn.Module):
+class CARLE(nn.Module):
 
     def __init__(self, **kwargs):
-        super(AutomaticCellularEnvironment,self).__init__()
+        super(CARLE,self).__init__()
 
         self.width = kwargs["width"] if "width" in kwargs.keys() else 64
         self.height = kwargs["height"] if "height" in kwargs.keys() else 64
@@ -314,7 +314,7 @@ Life-like CA rules
 
 if __name__ == '__main__':
 
-    env = AutomaticCellularEnvironment()
+    env = CARLE()
 
     obs = env.reset()
     
