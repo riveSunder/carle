@@ -1,0 +1,13 @@
+---
+layout: post
+title: "Update 2021-01-17: Fix cellular birth logic, blog post about evaluation in open-endedness." 
+date: 2021-02-14 00:00:00 +0000
+categories: updates
+---
+
+------
+## Update 2021-01-17: New exploration bonus and RND bug-fixes
+
+* Commit [4e93a692](https://github.com/riveSunder/carle/commit/4e93a692860817e011e22baed6d96904b7460dcc) corrects erroneous in calculating cell births. Previously no check was made to whether a cell was previously dead when calcuating births. This error affected rulesets which do not contain the birth neighborhood state(s) in the survive rule list. The issue was discovered by noticing ladders in the Coral ruleset (B3/S45678).
+
+* New [blog post](https://rivesunder.github.io/cellular_automata/carle/2021/02/12/open_ended_eval.html) containing some of my thoughts on evaluating agent interactions with an open-ended environment with an eye toward mechanics and artistic beauty. 
