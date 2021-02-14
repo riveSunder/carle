@@ -42,7 +42,7 @@ class CARLE(nn.Module):
         """
         
         circular = True
-        use_cuda = True
+        self.use_cuda = False
 
         moore_kernel = torch.tensor([[1.,1.,1.], [1.,0.,1.], [1.,1.,1.]],\
                 requires_grad=False)
@@ -56,7 +56,7 @@ class CARLE(nn.Module):
                 padding_mode=my_mode, bias=False)
 
 
-        if torch.cuda.is_available() and use_cuda:
+        if torch.cuda.is_available() and self.use_cuda:
             self.my_device = "cuda"
             self.neighborhood.to(self.my_device)
             self.to(self.my_device)
@@ -107,7 +107,7 @@ class CARLE(nn.Module):
 
         return observation
 
-    def step(self, action):
+    def apply_action(self, action):
 
         if type(action) is not torch.Tensor:
             action = torch.Tensor(action)
@@ -125,19 +125,25 @@ class CARLE(nn.Module):
         # toggle cells according to actions
         self.universe = 1.0 * torch.logical_xor(self.universe, action)
 
+    def get_observation(self):
+
+        return self.universe
+
+    def step(self, action):
+        
+        self.apply_action(action)
+
         my_neighborhood = self.neighborhood(self.universe)
 
         universe_1 = torch.zeros_like(self.universe) 
 
         for b in self.birth:
-            universe_1[my_neighborhood == b] = 1
+            universe_1[((1-self.universe) * (my_neighborhood == b)) == 1] = 1
 
         for s in self.survive:
-            universe_1[self.universe*my_neighborhood == s] = 1
-
+            universe_1[(self.universe * (my_neighborhood == s)) == 1] = 1
 
         
-        observation = universe_1
         self.universe = universe_1
         self.step_number += 1
 
@@ -145,6 +151,7 @@ class CARLE(nn.Module):
         # giving no done signal and a reward of 0.0
         # episodic constraints and endogenous rewards have to be implemented
         # by wrappers or agents themselves.
+        observation = self.get_observation()
         reward = torch.zeros(self.instances, 1).to(self.my_device)
         done = torch.zeros(self.instances, 1)
         info = [{}] * self.instances
