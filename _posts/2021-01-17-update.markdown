@@ -1,0 +1,11 @@
+---
+layout: post
+title: "Update 2021-01-17: New exploration bonus and RND bug-fixes" 
+date: 2021-01-17 00:00:00 +0000
+categories: updates
+---
+
+------
+## Update 2021-01-17: New exploration bonus and RND bug-fixes
+
+* [PR#6](https://github.com/riveSunder/carle/pull/6/) introduces an autoencoder loss bonus wrapper and fixes significant problems in the RND wrapper. Previously RND accumulated gradients but did not use them to update the predictor network due to a missing call to the optimizer. I've replaced the animations and updated the text in relevant places.  
