@@ -15,6 +15,7 @@ class CARLE(nn.Module):
     def __init__(self, **kwargs):
         super(CARLE,self).__init__()
 
+        self.inner_env = None
         self.width = kwargs["width"] if "width" in kwargs.keys() else 64
         self.height = kwargs["height"] if "height" in kwargs.keys() else 64
 
@@ -171,7 +172,7 @@ class CARLE(nn.Module):
                 else:
                     print(" ", end="")
 
-        time.sleep(0.25)
+        time.sleep(0.125)
                 #print(self.universe[0,0,ii,jj], end="\r")
 
     def save_frame(self):

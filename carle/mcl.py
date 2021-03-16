@@ -9,21 +9,26 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from carle import AutomaticCellularEnvironment
+from carle import CARLE
 
 import matplotlib.pyplot as plt
 
 
 class Motivator(nn.Module):
 
-    def __init__(self, env_fn, **kwargs):
+    def __init__(self, env, **kwargs):
         super(Motivator, self).__init__()
         
-        self.env = env_fn(**kwargs)
+        if env.inner_env == None:
+            self.inner_env = env
+        else:
+            self.inner_env = env.inner_env
+
+        self.env = env
 
     def reset(self):
 
-        obs = self.env.reset
+        obs = self.env.reset()
         
         return obs
 
@@ -38,12 +43,14 @@ class RND2D(Motivator):
     An implentation of random network distillation (Burda et al. 2018) 
     for 4d tensors representing 2D cellular automata universes
     """
-    def __init__(self, env_fn, **kwargs):
-        super(RND2D, self).__init__(env_fn, **kwargs)
+    def __init__(self, env, **kwargs):
+        super(RND2D, self).__init__(env, **kwargs)
         
+        self.my_name = "RND2D"
+
         self.learning_rate = 1e-3
 
-        self.curiosity_scale = 1.0
+        self.reward_scale = 1.0
         self.rnd_dim = 16
 
         self.initialize_predictor()
@@ -179,7 +186,7 @@ class RND2D(Motivator):
 
         rnd_bonus = self.get_bonus_accumulate(obs).unsqueeze(1)
 
-        reward += self.curiosity_scale * rnd_bonus
+        reward += self.reward_scale * rnd_bonus
 
         return obs, reward, done, info
 
@@ -199,9 +206,12 @@ class RND2D(Motivator):
 
 class AE2D(RND2D):
 
-    def __init__(self, env_fn, **kwargs):
+    def __init__(self, env, **kwargs):
         super(AE2D, self).__init__(env_fn, **kwargs)
         self.learning_rate = 1e-3
+
+        self.my_name = "AE2D"
+
 
     def initialize_random_network(self):
         pass
@@ -308,81 +318,190 @@ class AE2D(RND2D):
 
         return loss
 
+class SpeedDetector(Motivator):
+
+    def __init__(self, env, **kwargs):
+        super(SpeedDetector, self).__init__(env, **kwargs)
+
+        self.reward_scale = 1.0
+
+        self.com = np.array([(self.env.height - 1) / 2.0,\
+                            (self.env.width - 1) / 2.0])
+
+        self.speed_modulator = 32.0
+
+        self.mass_weight_h = torch.arange(self.env.height).reshape(1, -1)
+        self.mass_weight_w = torch.arange(self.env.width).reshape(-1, 1)
+
+        self.growing_steps = 0
+        self.smooth_velocity = 0.0
+        self.speed = 0.0
+
+        self.velocity = np.array([0.0, 0.0])
+
+        self.live_cells = 0
+
+    def step(self, action):
+
+        obs, reward, done, info = self.env.step(action)
+
+        live_cells = torch.sum(self.inner_env.universe)
+        center_of_mass_h = torch.sum(self.inner_env.universe * self.mass_weight_h)\
+                / live_cells
+        center_of_mass_w = torch.sum(self.inner_env.universe * self.mass_weight_w)\
+                / live_cells
+
+        com = np.array([center_of_mass_h, center_of_mass_w])
+
+        if not(torch.sum(action)):
+
+            self.growing_steps += 1
+
+            alpha = 1. / self.speed_modulator
+
+            velocity = self.com - com
+
+            # exponential average of velocity
+            self.smooth_velocity = (1. - alpha) * self.smooth_velocity + alpha * velocity 
+
+            self.speed = np.sqrt( np.sum(self.smooth_velocity)**2 )
+            self.velocity = velocity
+
+            reward += self.reward_scale * self.speed
+            
+
+        else:
+
+            self.growing_steps = 0
+            self.speed = 0.0 
+
+        self.live_cells = live_cells
+
+        return obs, reward, done, info
+
+
+class PufferDetector(Motivator):
+
+    """
+    This wrapper detects unbounded growth patterns in the absence of agent actions.
+    Due to the simplicity of the detection logic, it will also detect glider/spaceship guns
+    and naturally ocurring growth (i.e. growth due to growing rulesets like B3/45678.
+
+    In cases where growth is naturally ocurring, this wrapper would  
+    """
+
+    def __init__(self, env, **kwargs):
+        super(PufferDetector, self).__init__(env, **kwargs) 
+
+        self.my_name = "PufferDetector"
+
+        self.live_cells = 0
+        self.reward_scale = 1.0
+        
+        # growth threshold is also used to calculate the exponential average num live cells
+        self.growth_threshold = 16
+
+        self.growing_steps = 0
+    
+    def step(self, action):
+
+        obs, reward, done, info = self.env.step(action)
+
+        live_cells = torch.sum(self.inner_env.universe).cpu().numpy() 
+
+        
+        if not(torch.sum(action)):
+
+            if live_cells > self.live_cells:
+                self.growing_steps += 1
+            else: 
+                self.growing_steps = 0
+
+
+            if self.growing_steps > self.growth_threshold: 
+                reward += self.reward_scale
+        else:
+
+            self.growing_steps = 0
+        
+        alpha = 1. / self.growth_threshold
+        self.live_cells = (1 - alpha) * self.live_cells + alpha * live_cells
+
+        return obs, reward, done, info
+
 
 if __name__ == "__main__":
 
 
+    env = CARLE() 
+    env = SpeedDetector(env)
+    env = PufferDetector(env)
 
-    env_fn = AutomaticCellularEnvironment 
-    env = RND2D(env_fn)
+    #rules for Life
+    env.inner_env.birth = [3]
+    for ss in [[2,3], [0,1,2,3,4,5,6,7,8]]:
+        print("survival rules are ", ss)
+        env.inner_env.survive = ss
 
-    number_steps = 500
 
-    rewards = {}
+        # no growth reward
 
-    plt.figure()
-    for batch_size in [1, 8, 16]:
+        obs = env.reset()
+        sum_reward = 0.0
+        for step in range(64):
 
-        for wrapper, name in zip([AE2D, RND2D], ["AE", "RND"]):
-            action = torch.zeros(env.env.instances, 1, \
-                   env.env.action_width, env.env.action_height)
-    
-            action[0,0,4:6,16] = 1.0
-            action[0,0,6,15] = 1.0
-            action[0,0,6,17] = 1.0
-            action[0,0,7:11,16] = 1.0
-            action[0,0,11,15] = 1.0
-            action[0,0,11,17] = 1.0
-            action[0,0,12:14,16] = 1.0
+            action = torch.ones(env.inner_env.instances,\
+                    1, env.inner_env.action_height, \
+                    env.inner_env.action_height)
 
-            env = wrapper(env_fn)
-            env.batch_size = batch_size
-            name += str(batch_size)
-            rewards[name] = []
-
-            cumulative_reward = 0.0
-            obs = env.reset()
-
-            for my_step in range(number_steps):
-
-                obs, reward, done, info = env.step(action)
-                action *= 0
-
-                cumulative_reward += reward
-                rewards[name].append(reward[0,0].detach().cpu().numpy())
+            obs, r, d, i = env.step(action)
             
-            print("cumulative reward = {}".format(cumulative_reward))
+            sum_reward += r
 
-            plt_index = 1 + 1 * ("rnd" in name.lower())
-            plt.subplot(1,2,plt_index)
-            plt.plot(rewards[name], label=name)
-            plt.legend()
-            plt.title("{} exploration bonus ".format(name))
+        print("sum of rewards with toggles ", sum_reward)
+
+        # growth reward (no toggles)
+        obs = env.reset()
+        sum_reward = 0.0
+        env.step(action)
+        for step in range(64):
+
+            action = torch.zeros(env.inner_env.instances, \
+                    1, env.inner_env.action_height, \
+                    env.inner_env.action_height)
+
+            obs, reward, d, i = env.step(action)
+
+            
+            sum_reward += reward
+
+        print("sum of rewards without toggles ", sum_reward)
+
+
+        # growth reward (no toggles)
+        obs = env.reset()
+        sum_reward = 0.0
+
+        action = torch.zeros(env.inner_env.instances, \
+                1, env.inner_env.action_height, \
+                env.inner_env.action_height)
+        action[:,:,14, 16] = 1.0
+        action[:,:,15, 16:18] = 1.0
+        action[:,:,16, 15:18:2] = 1.0
+
+        env.step(action)
+
+        for step in range(64):
+
+            action = torch.zeros(env.inner_env.instances, \
+                    1, env.inner_env.action_height, \
+                    env.inner_env.action_height)
+
+            obs, reward, d, i = env.step(action)
+
+            
+            sum_reward += reward
+
+        print("sum of rewards with glider ", sum_reward)
         
-            action = torch.ones(env.env.instances,1,32,32)
 
-
-            if(1):
-                print("throughput with {} bonus wrapper:".format(name))
-
-                my_steps = 4096
-                obs = env.reset()
-
-                env.batch_size = batch_size
-                print("batch size = {}".format(env.batch_size))
-                for instances in [1, 16, 256]:
-                    env.env.instances = instances
-                    action = torch.ones(env.env.instances,1,32,32)
-                    obs = env.reset()
-                    t2 = time.time()
-
-                    for step in range(my_steps):
-                        _ = env.step(action)
-                    
-
-                    t3 = time.time()
-                    print("CA updates per second with {}x vectorization = {}"\
-                            .format(env.env.instances, my_steps * env.env.instances/(t3-t2)))
-
-    plt.legend()
-    plt.show()
