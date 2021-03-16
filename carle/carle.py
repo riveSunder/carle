@@ -15,6 +15,7 @@ class CARLE(nn.Module):
     def __init__(self, **kwargs):
         super(CARLE,self).__init__()
 
+        self.inner_env = None
         self.width = kwargs["width"] if "width" in kwargs.keys() else 64
         self.height = kwargs["height"] if "height" in kwargs.keys() else 64
 

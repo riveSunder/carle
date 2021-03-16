@@ -19,6 +19,11 @@ class Motivator(nn.Module):
     def __init__(self, env, **kwargs):
         super(Motivator, self).__init__()
         
+        if env.inner_env == None:
+            self.inner_env = env
+        else:
+            self.inner_env = env.inner_env
+
         self.env = env
 
     def reset(self):
@@ -340,10 +345,10 @@ class SpeedDetector(Motivator):
 
         obs, reward, done, info = self.env.step(action)
 
-        live_cells = torch.sum(self.env.universe)
-        center_of_mass_h = torch.sum(self.env.universe * self.mass_weight_h)\
+        live_cells = torch.sum(self.inner_env.universe)
+        center_of_mass_h = torch.sum(self.inner_env.universe * self.mass_weight_h)\
                 / live_cells
-        center_of_mass_w = torch.sum(self.env.universe * self.mass_weight_w)\
+        center_of_mass_w = torch.sum(self.inner_env.universe * self.mass_weight_w)\
                 / live_cells
 
         com = np.array([center_of_mass_h, center_of_mass_w])
@@ -402,7 +407,7 @@ class PufferDetector(Motivator):
 
         obs, reward, done, info = self.env.step(action)
 
-        live_cells = torch.sum(self.env.universe).cpu().numpy() 
+        live_cells = torch.sum(self.inner_env.universe).cpu().numpy() 
 
         
         if not(torch.sum(action)):
@@ -428,72 +433,75 @@ class PufferDetector(Motivator):
 if __name__ == "__main__":
 
 
-    env_fn = CARLE() 
-    env = SpeedDetector(env_fn)
+    env = CARLE() 
+    env = SpeedDetector(env)
+    env = PufferDetector(env)
 
     #rules for Life
-    env.env.birth = [3]
-    env.env.survive = [2,3]
+    env.inner_env.birth = [3]
+    for ss in [[2,3], [0,1,2,3,4,5,6,7,8]]:
+        print("survival rules are ", ss)
+        env.inner_env.survive = ss
 
 
-    # no growth reward
+        # no growth reward
 
-    obs = env.reset()
-    sum_reward = 0.0
-    for step in range(64):
+        obs = env.reset()
+        sum_reward = 0.0
+        for step in range(64):
 
-        action = torch.ones(env.env.instances,\
-                1, env.env.action_height, \
-                env.env.action_height)
+            action = torch.ones(env.inner_env.instances,\
+                    1, env.inner_env.action_height, \
+                    env.inner_env.action_height)
 
-        obs, r, d, i = env.step(action)
+            obs, r, d, i = env.step(action)
+            
+            sum_reward += r
+
+        print("sum of rewards with toggles ", sum_reward)
+
+        # growth reward (no toggles)
+        obs = env.reset()
+        sum_reward = 0.0
+        env.step(action)
+        for step in range(64):
+
+            action = torch.zeros(env.inner_env.instances, \
+                    1, env.inner_env.action_height, \
+                    env.inner_env.action_height)
+
+            obs, reward, d, i = env.step(action)
+
+            
+            sum_reward += reward
+
+        print("sum of rewards without toggles ", sum_reward)
+
+
+        # growth reward (no toggles)
+        obs = env.reset()
+        sum_reward = 0.0
+
+        action = torch.zeros(env.inner_env.instances, \
+                1, env.inner_env.action_height, \
+                env.inner_env.action_height)
+        action[:,:,14, 16] = 1.0
+        action[:,:,15, 16:18] = 1.0
+        action[:,:,16, 15:18:2] = 1.0
+
+        env.step(action)
+
+        for step in range(64):
+
+            action = torch.zeros(env.inner_env.instances, \
+                    1, env.inner_env.action_height, \
+                    env.inner_env.action_height)
+
+            obs, reward, d, i = env.step(action)
+
+            
+            sum_reward += reward
+
+        print("sum of rewards with glider ", sum_reward)
         
-        sum_reward += r
-
-    print("sum of rewards with toggles ", sum_reward)
-
-    # growth reward (no toggles)
-    obs = env.reset()
-    sum_reward = 0.0
-    env.step(action)
-    for step in range(64):
-
-        action = torch.zeros(env.env.instances, \
-                1, env.env.action_height, \
-                env.env.action_height)
-
-        obs, reward, d, i = env.step(action)
-
-        
-        sum_reward += reward
-
-    print("sum of rewards without toggles ", sum_reward)
-
-
-    # growth reward (no toggles)
-    obs = env.reset()
-    sum_reward = 0.0
-
-    action = torch.zeros(env.env.instances, \
-            1, env.env.action_height, \
-            env.env.action_height)
-    action[:,:,14, 16] = 1.0
-    action[:,:,15, 16:18] = 1.0
-    action[:,:,16, 15:18:2] = 1.0
-
-    env.step(action)
-
-    for step in range(64):
-
-        action = torch.zeros(env.env.instances, \
-                1, env.env.action_height, \
-                env.env.action_height)
-
-        obs, reward, d, i = env.step(action)
-
-        
-        sum_reward += reward
-
-    print("sum of rewards with glider ", sum_reward)
-    
 
