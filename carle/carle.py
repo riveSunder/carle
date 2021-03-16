@@ -171,7 +171,7 @@ class CARLE(nn.Module):
                 else:
                     print(" ", end="")
 
-        time.sleep(0.25)
+        time.sleep(0.125)
                 #print(self.universe[0,0,ii,jj], end="\r")
 
     def save_frame(self):
