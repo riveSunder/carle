@@ -16,11 +16,11 @@ class CARLE(nn.Module):
         super(CARLE,self).__init__()
 
         self.inner_env = None
-        self.width = kwargs["width"] if "width" in kwargs.keys() else 64
-        self.height = kwargs["height"] if "height" in kwargs.keys() else 64
+        self.width = kwargs["width"] if "width" in kwargs.keys() else 256
+        self.height = kwargs["height"] if "height" in kwargs.keys() else 256
 
-        self.action_width = 32 
-        self.action_height = 32  
+        self.action_width = 64 
+        self.action_height = 64  
 
         self.alive_rate = kwargs["alive_rate"] if "alive_rate" in kwargs.keys()\
                 else 0.0
@@ -89,19 +89,19 @@ class CARLE(nn.Module):
         assymetry_height = (self.height - self.action_height) % 2
 
         self.action_width -= (self.width % 2)
-        self.action_height -= (self.width % 2)
+        self.action_height -= (self.height % 2)
 
         width_padding = (self.width - self.action_width) // 2 
         height_padding = (self.height - self.action_height) // 2
 
         self.action_padding = nn.ZeroPad2d(padding=\
-                (width_padding, width_padding + assymetry_width,\
-                height_padding, height_padding + assymetry_height))
+                (height_padding, height_padding + assymetry_height,\
+                width_padding, width_padding + assymetry_width))
 
     def reset(self):
         
         self.universe = 1.0 * \
-                (torch.rand(self.instances, 1, self.width, self.height)\
+                (torch.rand(self.instances, 1, self.height, self.width)\
                 < self.alive_rate)
 
         self.universe = self.universe.to(self.my_device)
@@ -192,6 +192,119 @@ class CARLE(nn.Module):
         time.sleep(0.125)
                 #print(self.universe[0,0,ii,jj], end="\r")
 
+    def rle_to_grid(self, rle):
+
+        ii = 0
+        jj = 0
+
+        line_count = 0
+        total_count = 0
+        rle_length = len(rle)
+
+        my_grid = torch.zeros(self.height, self.width) 
+
+        temp = ""
+        while total_count < rle_length:
+
+            temp += rle[total_count]
+
+            if temp[-1].lower() == "b":
+
+                run = int(temp.strip("b"))
+                my_grid[ii,jj:jj+run] = 0
+
+                jj += run
+                temp = ""
+
+            elif temp[-1].lower() == "o":
+
+                run = int(temp.strip("o"))
+                my_grid[ii,jj:jj+run] = 1
+
+                jj += run
+                temp = ""
+
+            elif temp[-1] == "$":
+                
+                my_grid[ii,jj:] = 0
+
+                # next row
+                ii += 1
+                jj = 0
+                temp = ""
+                
+            elif temp[-1] == "!":
+                temp = ""
+
+            total_count += 1
+
+        return my_grid
+
+    def read_rle(self, filepath):
+
+        rle = ""
+
+        add_to_rle = False
+        with open(filepath, "r") as f:
+
+            for temp_line in f.readlines():
+                    
+                if add_to_rle:
+
+                    rle += temp_line 
+
+                if "rule" in temp_line:
+
+                    rules = temp_line.split("/")
+
+                    proto_birth = rules[0].split()[-1]
+                    # assuming the rle includes dimensions (i.e. has a colon) for now
+                    proto_survive_dim = rules[1].split(":")
+
+                    proto_survive = proto_survive_dim[0]
+                    proto_dim = proto_survive_dim[1]
+
+                    self.birth = []
+                    self.survive = []
+
+                    for bb in proto_birth:
+                        if bb.lower() != "b":
+                            self.birth.append(int(bb))
+                    for ss in proto_survive:
+                        if ss.lower() != "s":
+                            self.survive.append(int(ss))
+
+                    # ignore dimensions (and corner) for now (assuming rle files come from CARLE)
+
+                    # set 
+                    add_to_rle = True
+
+        return rle
+
+    def read_csv(self, filepath):
+
+        print("warning, read_csv not implemented yet")
+
+        return ""
+
+    def load_universe(self, filepath, universe_index=0):
+
+
+        if "rle" in filepath[-4:]:
+
+            my_rle = self.read_rle(filepath)
+
+        else:
+            my_rle = self.read_csv(filepath)
+
+        my_universe = self.rle_to_grid(my_rle)
+
+        assert self.universe.shape[2] == my_universe.shape[0]\
+                and self.universe.shape[3] == my_universe.shape[1],\
+                "tried to load the wrong size universe"
+
+        self.universe[universe_index,0,:,:] = my_universe
+
     def get_rle(self, universe, action=False):
 
         """
@@ -212,7 +325,7 @@ class CARLE(nn.Module):
         for bb in self.birth: rle += str(bb)
         rle += "/S"  
         for ss in self.survive: rle += str(ss)
-        rle += ":T{}, {}\n".format(self.width, self.height)
+        rle += ":T{}, {}\n".format(self.height, self.width)
 
         state_string = ["b", "o"]
 
@@ -307,11 +420,12 @@ if __name__ == '__main__':
 
     obs = env.reset()
     
+
     my_steps = 3
 
     action = torch.zeros(env.instances, \
             1, env.action_height, \
-            env.action_height)
+            env.action_width)
     action[:,:,14, 16] = 1.0
     action[:,:,15, 16:18] = 1.0
     action[:,:,16, 15:18:2] = 1.0
@@ -320,9 +434,7 @@ if __name__ == '__main__':
     for step in range (my_steps):
         #env.render()
         _ = env.step(action)
-        action = 1 * (torch.rand(env.instances, 1,\
-                env.action_width,\
-                env.action_height) > 0.1)
+        action *= 0.0
 
 
     rle = env.get_rle(env.universe[0,0,:,:])
@@ -331,6 +443,13 @@ if __name__ == '__main__':
     env.save_frame()
 
     env.save_log()
+
+
+    env = CARLE()
+    obs = env.reset()
+    env.load_universe("./logs/universe1616019257_step3.rle")
+
+    env.save_frame()
 
     t1 = time.time()
     print("CA updates per second with {}x vectorization = {} and saving frames"\
