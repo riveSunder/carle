@@ -10,6 +10,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import pandas as pd
+
 class CARLE(nn.Module):
 
     def __init__(self, **kwargs):
@@ -25,9 +27,12 @@ class CARLE(nn.Module):
         self.alive_rate = kwargs["alive_rate"] if "alive_rate" in kwargs.keys()\
                 else 0.0
         
-        # instances define how many CA universes to 
+        # instances define how many CA universes to run in parallel via vectorization 
         self.instances = kwargs["instances"] if "instances" in kwargs.keys()\
                 else 1
+
+        # keep track of universe development
+        self.logging = kwargs["logging"] if "logging" in kwargs.keys() else False
 
         self.set_neighborhood()
         self.set_action_padding()
@@ -35,6 +40,7 @@ class CARLE(nn.Module):
         # Conway's GoL rules
         self.birth = [3]
         self.survive = [2,3]
+
 
     def set_neighborhood(self):
         """
@@ -106,6 +112,10 @@ class CARLE(nn.Module):
         self.instance_id = str(int(time.time()))
         self.step_number = 0
 
+        # used to determine when logging universe rle is necessary
+        self.steps_since_action = 0
+        self.log = []
+
         return observation
 
     def apply_action(self, action):
@@ -132,7 +142,14 @@ class CARLE(nn.Module):
 
     def step(self, action):
         
-        self.apply_action(action)
+        if torch.sum(action):
+            self.apply_action(action)
+
+            if self.logging:
+                self.log_universe()
+
+        else:
+            self.time_since_action += 1
 
         my_neighborhood = self.neighborhood(self.universe)
 
@@ -174,6 +191,35 @@ class CARLE(nn.Module):
 
         time.sleep(0.125)
                 #print(self.universe[0,0,ii,jj], end="\r")
+
+    def get_rle(self, universe):
+
+        "compute run-length encoding for given universe"
+
+
+        #write header
+        rle = "x = 0, y = 0, rule = B" 
+        for bb in self.birth: rle += str(bb)
+        rle += "/S"  
+        for ss in self.survive: rle += str(ss)
+        rle += ":T{}, {}\n".format(self.width, self.height)
+
+        return rle
+
+    def log_universe(self, universe_index=0):
+        pass
+        
+    def save_log(self):
+        pass
+
+    def save_rle(self, rle):
+
+        with open("./logs/universe{}_step{}.rle"\
+                .format(self.instance_id, self.step_number), 'w') as f:
+
+            f.write(rle)
+
+
 
     def save_frame(self):
         """
@@ -328,20 +374,24 @@ if __name__ == '__main__':
     
     my_steps = 2048
 
-    action = torch.ones(env.instances,1,32,32)
+    action = 1.0 * (torch.rand(env.instances,1,32,32) < 0.1)
 
     t0 = time.time()
     for step in range (my_steps):
         #env.render()
-        env.save_frame()
         _ = env.step(action)
 
+
+    rle = env.get_rle(env.universe[0,0,:,:])
+
+    env.save_rle(rle)
+    env.save_frame()
 
     t1 = time.time()
     print("CA updates per second with {}x vectorization = {} and saving frames"\
             .format(env.instances, my_steps * env.instances/(t1-t0)))
 
-    if(1):
+    if(0):
 
 
         for instances in [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096]:
