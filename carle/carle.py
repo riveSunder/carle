@@ -10,8 +10,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import pandas as pd
-
 class CARLE(nn.Module):
 
     def __init__(self, **kwargs):
@@ -143,10 +141,12 @@ class CARLE(nn.Module):
     def step(self, action):
         
         if torch.sum(action):
-            self.apply_action(action)
+            self.action = action
 
             if self.logging:
                 self.log_universe()
+
+            self.apply_action(action)
 
         else:
             self.steps_since_action += 1
@@ -192,7 +192,7 @@ class CARLE(nn.Module):
         time.sleep(0.125)
                 #print(self.universe[0,0,ii,jj], end="\r")
 
-    def get_rle(self, universe):
+    def get_rle(self, universe, action=False):
 
         """
         compute run-length encoding for given universe
@@ -202,7 +202,13 @@ class CARLE(nn.Module):
         universe = universe.squeeze()
 
         #write header
-        rle = "x = 0, y = 0, rule = B" 
+        rle = "#C exp_id={} \n".format(self.instance_id)
+        if action:
+            rle += "#C step={} (action) \n".format(self.step_number)
+        else:
+            rle += "#C step={} (universe) \n".format(self.step_number)
+
+        rle += "x = 0, y = 0, rule = B" 
         for bb in self.birth: rle += str(bb)
         rle += "/S"  
         for ss in self.survive: rle += str(ss)
@@ -245,10 +251,33 @@ class CARLE(nn.Module):
         return rle
 
     def log_universe(self, universe_index=0):
-        pass
+        """
+        save universe rle to log list
+        [[action, rle]
+        ]
+        """
+
+        rle_universe = self.get_rle(self.universe[universe_index,0,:,:])
+        rle_action = self.get_rle(self.action[universe_index,0,:,:], action=True)
+
+        self.log.append([rle_action, rle_universe])
+
         
     def save_log(self):
-        pass
+        """
+        save log as csv file
+        """
+        
+        with open("./logs/carle_log{}.csv".format(self.instance_id), "w") as f:
+
+            f.write('action,universe,\n')
+            for log_entry in self.log:
+
+                for entry in log_entry:
+                    f.write('"' + entry + '"' + ",")
+                f.write("\n")
+
+
 
     def save_rle(self, rle):
 
@@ -397,7 +426,6 @@ Life-like CA rules
             #23/36
             # this rule has a replicator
             self.live_rules[2:4] = 1
-
             self.dead_rules[3] = 1
             self.dead_rules[6] = 1
         
@@ -406,12 +434,11 @@ Life-like CA rules
 
 if __name__ == '__main__':
 
-    env = CARLE()
+    env = CARLE(logging=True)
 
     obs = env.reset()
     
-    my_steps = 64
-
+    my_steps = 3
 
     action = torch.zeros(env.instances, \
             1, env.action_height, \
@@ -424,7 +451,9 @@ if __name__ == '__main__':
     for step in range (my_steps):
         #env.render()
         _ = env.step(action)
-        action *= 0.0
+        action = 1 * (torch.rand(env.instances, 1,\
+                env.action_width,\
+                env.action_height) > 0.1)
 
 
     rle = env.get_rle(env.universe[0,0,:,:])
@@ -432,11 +461,7 @@ if __name__ == '__main__':
     env.save_rle(rle)
     env.save_frame()
 
-    _ = env.step(torch.ones_like(action))
-    rle = env.get_rle(env.universe[0,0,:,:])
-
-    env.save_rle(rle)
-    env.save_frame()
+    env.save_log()
 
     t1 = time.time()
     print("CA updates per second with {}x vectorization = {} and saving frames"\
