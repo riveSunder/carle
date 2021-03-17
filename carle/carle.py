@@ -149,7 +149,7 @@ class CARLE(nn.Module):
                 self.log_universe()
 
         else:
-            self.time_since_action += 1
+            self.steps_since_action += 1
 
         my_neighborhood = self.neighborhood(self.universe)
 
@@ -194,8 +194,12 @@ class CARLE(nn.Module):
 
     def get_rle(self, universe):
 
-        "compute run-length encoding for given universe"
+        """
+        compute run-length encoding for given universe
+        expects one 2D CA universe
+        """
 
+        universe = universe.squeeze()
 
         #write header
         rle = "x = 0, y = 0, rule = B" 
@@ -203,6 +207,40 @@ class CARLE(nn.Module):
         rle += "/S"  
         for ss in self.survive: rle += str(ss)
         rle += ":T{}, {}\n".format(self.width, self.height)
+
+        state_string = ["b", "o"]
+
+        run_length = ""
+        for ii in range(universe.shape[0]):
+            jj = 0
+            current_state = universe[ii, jj]
+            run_count = 1
+            while jj < universe.shape[1] - 1:
+
+                jj +=1
+
+                if universe[ii, jj] == current_state:
+                    run_count += 1
+                else:
+                    
+                    run_length += str(run_count) + state_string[int(current_state)]
+
+                    if len(run_length) > 69:
+                        rle +=  run_length + "\n"
+                        run_length = ""
+
+                    current_state = universe[ii,jj]
+                    run_count = 1
+
+            
+            run_length += str(run_count) + state_string[int(current_state)]
+            run_length += "$"
+            if len(run_length) > 69:
+                rle +=  run_length + "\n"
+                run_length = ""
+
+        # end of pattern signal
+        rle += "!"
 
         return rle
 
@@ -215,7 +253,7 @@ class CARLE(nn.Module):
     def save_rle(self, rle):
 
         with open("./logs/universe{}_step{}.rle"\
-                .format(self.instance_id, self.step_number), 'w') as f:
+                .format(self.instance_id, self.step_number), "w") as f:
 
             f.write(rle)
 
@@ -372,16 +410,29 @@ if __name__ == '__main__':
 
     obs = env.reset()
     
-    my_steps = 2048
+    my_steps = 64
 
-    action = 1.0 * (torch.rand(env.instances,1,32,32) < 0.1)
+
+    action = torch.zeros(env.instances, \
+            1, env.action_height, \
+            env.action_height)
+    action[:,:,14, 16] = 1.0
+    action[:,:,15, 16:18] = 1.0
+    action[:,:,16, 15:18:2] = 1.0
 
     t0 = time.time()
     for step in range (my_steps):
         #env.render()
         _ = env.step(action)
+        action *= 0.0
 
 
+    rle = env.get_rle(env.universe[0,0,:,:])
+
+    env.save_rle(rle)
+    env.save_frame()
+
+    _ = env.step(torch.ones_like(action))
     rle = env.get_rle(env.universe[0,0,:,:])
 
     env.save_rle(rle)
