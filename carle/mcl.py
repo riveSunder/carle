@@ -355,11 +355,11 @@ class SpeedDetector(Motivator):
 
         if not(torch.sum(action)):
 
-            self.growing_steps += 1
 
             alpha = 1. / self.speed_modulator
 
             velocity = self.com - com
+            self.com = com
 
             # exponential average of velocity
             self.smooth_velocity = (1. - alpha) * self.smooth_velocity + alpha * velocity 
@@ -367,7 +367,19 @@ class SpeedDetector(Motivator):
             self.speed = np.sqrt( np.sum(self.smooth_velocity)**2 )
             self.velocity = velocity
 
-            reward += self.reward_scale * self.speed
+            if self.speed > 1 / (self.speed_modulator):
+                self.growing_steps += 1
+            else:
+                self.growing_steps = 0
+
+            if self.growing_steps > (self.speed_modulator / 2):
+
+                # intended to give a reward for any pattern traveling at c/(speed_modulator) or faster
+                # for at least speed_modulator/2 steps
+                # and weighted by the size of the spaceship
+
+                reward += self.reward_scale * live_cells
+        
             
 
         else:
@@ -435,11 +447,11 @@ if __name__ == "__main__":
 
     env = CARLE() 
     env = SpeedDetector(env)
-    env = PufferDetector(env)
+    #env = PufferDetector(env)
 
     #rules for Life
     env.inner_env.birth = [3]
-    for ss in [[2,3], [0,1,2,3,4,5,6,7,8]]:
+    for ss in [[2,3]]: #, [0,1,2,3,4,5,6,7,8]]:
         print("survival rules are ", ss)
         env.inner_env.survive = ss
 
@@ -454,7 +466,11 @@ if __name__ == "__main__":
                     1, env.inner_env.action_height, \
                     env.inner_env.action_height)
 
+            action[0,0,0,0] = 0.
+
+
             obs, r, d, i = env.step(action)
+            print(r)
             
             sum_reward += r
 
@@ -464,13 +480,14 @@ if __name__ == "__main__":
         obs = env.reset()
         sum_reward = 0.0
         env.step(action)
-        for step in range(64):
+        for step in range(32):
 
             action = torch.zeros(env.inner_env.instances, \
                     1, env.inner_env.action_height, \
                     env.inner_env.action_height)
 
             obs, reward, d, i = env.step(action)
+            print(reward)
 
             
             sum_reward += reward
@@ -491,13 +508,14 @@ if __name__ == "__main__":
 
         env.step(action)
 
-        for step in range(64):
+        for step in range(32):
 
             action = torch.zeros(env.inner_env.instances, \
                     1, env.inner_env.action_height, \
                     env.inner_env.action_height)
 
             obs, reward, d, i = env.step(action)
+            print(reward)
 
             
             sum_reward += reward
