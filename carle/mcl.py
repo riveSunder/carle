@@ -9,7 +9,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from carle import CARLE
+import carle
+from carle.env import CARLE
 
 import matplotlib.pyplot as plt
 
@@ -325,21 +326,20 @@ class SpeedDetector(Motivator):
 
         self.reward_scale = 1.0
 
-        self.com = np.array([(self.env.height - 1) / 2.0,\
-                            (self.env.width - 1) / 2.0])
+        self.com = None 
 
         self.speed_modulator = 32.0
 
-        self.mass_weight_h = torch.arange(self.env.height).reshape(1, -1)
-        self.mass_weight_w = torch.arange(self.env.width).reshape(-1, 1)
+        self.mass_weight_h = torch.arange(self.inner_env.height).reshape(1, -1)
+        self.mass_weight_w = torch.arange(self.inner_env.width).reshape(-1, 1)
 
         self.growing_steps = 0
-        self.smooth_velocity = 0.0
-        self.speed = 0.0
+        self.smooth_velocity = None
+        self.speed = None
 
         self.velocity = np.array([0.0, 0.0])
 
-        self.live_cells = 0
+        self.live_cells = None
 
     def step(self, action):
 
@@ -355,32 +355,41 @@ class SpeedDetector(Motivator):
 
         if not(torch.sum(action)):
 
-
             alpha = 1. / self.speed_modulator
 
-            velocity = self.com - com
-            self.com = com
-
-            # exponential average of velocity
-            self.smooth_velocity = (1. - alpha) * self.smooth_velocity + alpha * velocity 
-
-            self.speed = np.sqrt( np.sum(self.smooth_velocity)**2 )
-            self.velocity = velocity
-
-            if self.speed > 1 / (self.speed_modulator):
-                self.growing_steps += 1
+            if self.com is None:
+                self.com = com
             else:
-                self.growing_steps = 0
+                velocity = self.com - com
 
-            if self.growing_steps > (self.speed_modulator / 2):
+                # exponential average of velocity
+                if self.smooth_velocity is None:
+                    self.smooth_velocity = velocity
+                else:
+                    self.smooth_velocity = (1. - alpha) * self.smooth_velocity + alpha * velocity 
 
-                # intended to give a reward for any pattern traveling at c/(speed_modulator) or faster
-                # for at least speed_modulator/2 steps
-                # and weighted by the size of the spaceship
+                speed = np.sqrt(np.sum((velocity)**2))
+                self.speed = np.sqrt( np.sum((self.smooth_velocity)**2) )
+                self.velocity = velocity
 
-                reward += self.reward_scale * live_cells
-        
+                if self.com[0]  == com[0] and self.com[1] == com[1]:
+                    self.speed = 0.0
+                self.com = com
+
+                if self.speed > 1 / (self.speed_modulator):
+                    self.growing_steps += 1
+                else:
+                    self.growing_steps = 0
+
+                if self.growing_steps > (self.speed_modulator / 2):
+
+                    # intended to give a reward for any pattern traveling at c/(speed_modulator) or faster
+                    # for at least speed_modulator/2 steps
+                    # and weighted by the size of the spaceship
+
+                    reward += self.reward_scale * live_cells
             
+                
 
         else:
 
@@ -407,11 +416,12 @@ class PufferDetector(Motivator):
 
         self.my_name = "PufferDetector"
 
-        self.live_cells = 0
+        self.cells = []
+        self.live_cells = 0.0
         self.reward_scale = 1.0
         
         # growth threshold is also used to calculate the exponential average num live cells
-        self.growth_threshold = 16
+        self.growth_threshold = 512
 
         self.growing_steps = 0
     
@@ -419,107 +429,146 @@ class PufferDetector(Motivator):
 
         obs, reward, done, info = self.env.step(action)
 
-        live_cells = torch.sum(self.inner_env.universe).cpu().numpy() 
+        self.live_cells = torch.sum(self.inner_env.universe).cpu().numpy() 
 
         
         if not(torch.sum(action)):
 
-            if live_cells > self.live_cells:
-                self.growing_steps += 1
-            else: 
-                self.growing_steps = 0
+            self.cells.append(self.live_cells)
+
+            if len(self.cells) > self.growth_threshold:
+                slope = self.cells[-1] - self.cells[0]
+
+                self.cells.pop(0)
+                if slope > 0.01:
+                    reward += 1
 
 
-            if self.growing_steps > self.growth_threshold: 
-                reward += self.reward_scale
         else:
-
             self.growing_steps = 0
+            self.cells = []
         
-        alpha = 1. / self.growth_threshold
-        self.live_cells = (1 - alpha) * self.live_cells + alpha * live_cells
 
+        
         return obs, reward, done, info
 
+def get_symmetric_action(probability=0.125, vertical_symmetry=False):
+    
+    action = torch.zeros(0,0,64,64)
+    midpoint = action.shape[3] // 2
+    
+    for ii in range(action.shape[2]):
+        for jj in range(1, midpoint):
+            
+            if torch.rand(1) <= probability:
+                if jj > 1:
+                    
+                    action[:,:,ii,midpoint+jj] = 1.0
+                    action[:,:,ii,midpoint-jj] = 1.0
+            
+    
+    return action
+
+def get_glider():
+    action = torch.zeros(1,1,64,64)
+    action[:,:,32,32] = 1.0
+    action[:,:,33,32:34] = 1.0
+    action[:,:, 34, 31] = 1.0
+    action[:,:, 34, 33] = 1.0
+    
+    return action
+
+def get_morley_puffer():
+    action = torch.zeros(1,1,64,64)
+    action[:,:,31:33,32] = 1.0
+    action[:,:,30,33] = 1.0
+    action[:,:,33,33] = 1.0
+    
+    action[:,:,29:35,34] = 1.0
+    
+    action[:,:,30,35:37] = 1.0
+    action[:,:,33,35:37] = 1.0
+    action[:,:,31:33,37] = 1.0
+    
+    return action
 
 if __name__ == "__main__":
 
 
     env = CARLE() 
-    env = SpeedDetector(env)
-    #env = PufferDetector(env)
+    env = PufferDetector(env)
+    #env = SpeedDetector(env)
 
     #rules for Life
-    env.inner_env.birth = [3]
-    for ss in [[2,3]]: #, [0,1,2,3,4,5,6,7,8]]:
-        print("survival rules are ", ss)
-        env.inner_env.survive = ss
+    env.inner_env.birth = [3,6,8]
+    ss = [2,4,5]
 
+    action_fn = get_morley_puffer
+    print("survival rules are ", ss)
+    print(action_fn)
+    env.inner_env.survive = ss
 
-        # no growth reward
+    for action_fn in [get_glider, get_morley_puffer, get_symmetric_action]:
 
         obs = env.reset()
         sum_reward = 0.0
-        for step in range(64):
-
-            action = torch.ones(env.inner_env.instances,\
-                    1, env.inner_env.action_height, \
-                    env.inner_env.action_height)
-
-            action[0,0,0,0] = 0.
-
-
-            obs, r, d, i = env.step(action)
-            print(r)
-            
-            sum_reward += r
-
-        print("sum of rewards with toggles ", sum_reward)
-
-        # growth reward (no toggles)
-        obs = env.reset()
-        sum_reward = 0.0
-        env.step(action)
-        for step in range(32):
-
-            action = torch.zeros(env.inner_env.instances, \
-                    1, env.inner_env.action_height, \
-                    env.inner_env.action_height)
-
-            obs, reward, d, i = env.step(action)
-            print(reward)
-
-            
-            sum_reward += reward
-
-        print("sum of rewards without toggles ", sum_reward)
-
-
-        # growth reward (no toggles)
-        obs = env.reset()
-        sum_reward = 0.0
-
-        action = torch.zeros(env.inner_env.instances, \
-                1, env.inner_env.action_height, \
-                env.inner_env.action_height)
-        action[:,:,14, 16] = 1.0
-        action[:,:,15, 16:18] = 1.0
-        action[:,:,16, 15:18:2] = 1.0
-
-        env.step(action)
-
-        for step in range(32):
-
-            action = torch.zeros(env.inner_env.instances, \
-                    1, env.inner_env.action_height, \
-                    env.inner_env.action_height)
-
-            obs, reward, d, i = env.step(action)
-            print(reward)
-
-            
-            sum_reward += reward
-
-        print("sum of rewards with glider ", sum_reward)
+        rewards = []
+        cells = []
         
+        action = action_fn()
+
+        for step in range(3400):
+
+            obs, reward, d, i = env.step(action)
+            rewards.append(reward)
+            
+            cells.append(env.live_cells)
+
+            action *= 0.0
+
+            sum_reward += reward
+
+        print("reward sum ", sum_reward)
+        
+        plt.figure()
+        plt.plot(rewards)
+        plt.plot(cells[1:]/ np.max(cells[1:]))
+        
+    env.reward_scale = 0.0
+    env = SpeedDetector(env)
+    env.inner_env.birth = [3]
+    ss = [2,3]
+
+    action_fn = get_glider
+    print("survival rules are ", ss)
+    print(action_fn)
+    env.inner_env.survive = ss
+
+
+    for action_fn in [get_glider, get_morley_puffer, get_symmetric_action]:
+        obs = env.reset()
+        sum_reward = 0.0
+        rewards = []
+        cells = []
+        
+        action = action_fn()
+
+        for step in range(3400):
+
+            obs, reward, d, i = env.step(action)
+            rewards.append(reward)
+            
+            cells.append(env.speed)
+
+            action *= 0.0
+
+            sum_reward += reward
+
+        print("reward sum ", sum_reward)
+        
+        plt.figure()
+        plt.plot(rewards)
+        plt.plot(cells[1:]/ np.max(cells[1:]))
+    plt.show()
+
 
