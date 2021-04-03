@@ -13,7 +13,7 @@ import torch.nn.functional as F
 class CARLE(nn.Module):
 
     def __init__(self, **kwargs):
-        super(CARLE,self).__init__()
+        super(CARLE, self).__init__()
 
         self.inner_env = None
         self.width = kwargs["width"] if "width" in kwargs.keys() else 256
@@ -208,33 +208,51 @@ class CARLE(nn.Module):
 
             temp += rle[total_count]
 
-            if temp[-1].lower() == "b":
+            if temp[-1] == "\n":
+                temp = temp[:-1]
+            else:
 
-                run = int(temp.strip("b"))
-                my_grid[ii,jj:jj+run] = 0
+                if temp[-1].lower() == "b":
 
-                jj += run
-                temp = ""
+                    if temp == "b":
+                        run = 1
+                    else:
+                        run = int(temp[:-1])
 
-            elif temp[-1].lower() == "o":
+                    my_grid[ii,jj:jj+run] = 0
 
-                run = int(temp.strip("o"))
-                my_grid[ii,jj:jj+run] = 1
+                    jj += run
+                    temp = ""
 
-                jj += run
-                temp = ""
+                elif temp[-1].lower() == "o":
 
-            elif temp[-1] == "$":
-                
-                my_grid[ii,jj:] = 0
+                    if temp == "o":
+                        run = 1
+                    else:
+                        run = int(temp[:-1])
 
-                # next row
-                ii += 1
-                jj = 0
-                temp = ""
-                
-            elif temp[-1] == "!":
-                temp = ""
+                    my_grid[ii,jj:jj+run] = 1
+
+                    jj += run
+                    temp = ""
+
+                elif temp[-1] == "$":
+
+                    if len(temp) > 1:
+                        row_run = int(temp[:-1])
+                        my_grid[ii:ii+row_run,:] = 0
+
+                        ii += row_run
+                    else:
+                        my_grid[ii,jj:] = 0
+
+                        # next row
+                        ii += 1
+                    jj = 0
+                    temp = ""
+                    
+                elif temp[-1] == "!":
+                    temp = ""
 
             total_count += 1
 
@@ -258,11 +276,18 @@ class CARLE(nn.Module):
                     rules = temp_line.split("/")
 
                     proto_birth = rules[0].split()[-1]
-                    # assuming the rle includes dimensions (i.e. has a colon) for now
-                    proto_survive_dim = rules[1].split(":")
 
-                    proto_survive = proto_survive_dim[0]
-                    proto_dim = proto_survive_dim[1]
+                    if ":" in rules:
+                        # assuming the rle includes dimensions 
+                        # (i.e. has a colon) for now
+                        proto_survive_dim = rules[1].split(":")
+
+                        proto_survive = proto_survive_dim[0]
+                        proto_dim = proto_survive_dim[1]
+                    else: 
+                        proto_survive = rules[-1]
+                        proto_dim = None
+                        
 
                     self.birth = []
                     self.survive = []
@@ -271,7 +296,7 @@ class CARLE(nn.Module):
                         if bb.lower() != "b":
                             self.birth.append(int(bb))
                     for ss in proto_survive:
-                        if ss.lower() != "s":
+                        if ss.lower() != "s" and ss.lower() != '\n':
                             self.survive.append(int(ss))
 
                     # ignore dimensions (and corner) for now (assuming rle files come from CARLE)
