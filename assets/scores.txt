@@ -1,0 +1,7 @@
+random baseline 1: mean evaluation score is 2.684e-01
+random baseline 2: mean evaluation score is 3.011e-01
+random baseline 3: mean evaluation score is 2.690e-01 
+random baseline 4: mean evaluation score is 2.532e-01
+
+random network baseline 1: mean evaluation score is 2.365e-01
+random network baseline 2: mean evaluation score is 2.829e-01

@@ -49,7 +49,7 @@ def evaluate(Agent, rules, wrappers, params_path=None, steps=1024):
 
         env.eval()
 
-        env.set_no_grad()
+        #env.set_no_grad()
 
     total_steps = 0
     score_trace = []
