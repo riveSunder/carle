@@ -6,8 +6,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from carle import AutomaticCellularEnvironment
-from mcl import RND2D, AE2D 
+from carle.env import CARLE
+from carle.mcl import RND2D, AE2D 
 
 import matplotlib.pyplot as plt
 
@@ -30,7 +30,7 @@ class RandomAgent(nn.Module):
                 if "observation_height" in kwargs.keys()\
                 else 256
 
-        self.toggle_rate = 0.020
+        self.toggle_rate = 0.100
 
     def forward(self, obs):
 
