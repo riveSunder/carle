@@ -58,7 +58,7 @@ class RND2D(Motivator):
         
         self.my_name = "RND2D"
 
-        self.learning_rate = 1e-3
+        self.learning_rate = 3e-5
 
         self.reward_scale = 1.0
         self.rnd_dim = 16
@@ -67,20 +67,20 @@ class RND2D(Motivator):
         self.initialize_random_network()
 
         self.buffer_length = 0
-        self.batch_size = 8
+        self.batch_size = 32
 
         self.updates = 0
 
     def initialize_predictor(self):
 
-        dense_nodes = (self.env.width // 8) * (self.env.height // 8)
+        dense_nodes = (self.inner_env.width // 8) * (self.inner_env.height // 8)
 
         self.predictor = nn.Sequential(\
-                nn.Conv2d(1, 8, 3, padding=1, stride=1),\
+                nn.Conv2d(1, 4, 3, padding=1, stride=1),\
                 nn.ReLU(),\
                 nn.MaxPool2d(2,2,padding=0),\
                 nn.MaxPool2d(2,2,padding=0),\
-                nn.Conv2d(8, 1, 3, padding=1, stride=1),\
+                nn.Conv2d(4, 1, 3, padding=1, stride=1),\
                 nn.ReLU(),\
                 nn.MaxPool2d(2,2,padding=0),\
                 nn.Flatten(),\
@@ -93,14 +93,14 @@ class RND2D(Motivator):
 
     def initialize_random_network(self):
 
-        dense_nodes = (self.env.width // 8) * (self.env.height // 8)
+        dense_nodes = (self.inner_env.width // 8) * (self.inner_env.height // 8)
 
         self.random_network = nn.Sequential(\
-                nn.Conv2d(1, 4, 3, padding=1, stride=1),\
+                nn.Conv2d(1, 2, 3, padding=1, stride=1),\
                 nn.ReLU(),\
                 nn.MaxPool2d(2,2,padding=0),\
                 nn.MaxPool2d(2,2,padding=0),\
-                nn.Conv2d(4, 1, 3, padding=1, stride=1),\
+                nn.Conv2d(2, 1, 3, padding=1, stride=1),\
                 nn.ReLU(),\
                 nn.MaxPool2d(2,2,padding=0),\
                 nn.Flatten(),\
@@ -131,6 +131,8 @@ class RND2D(Motivator):
         loss.backward()
 
         self.optimizer.step()
+
+        self.optimizer.zero_grad()
 
         self.updates += 1
 
@@ -191,7 +193,7 @@ class RND2D(Motivator):
 
     def step(self, action):
 
-        action = action.to(self.env.my_device)
+        action = action.to(self.inner_env.my_device)
         obs, reward, done, info = self.env.step(action)
 
         rnd_bonus = self.get_bonus_accumulate(obs).unsqueeze(1)
@@ -207,7 +209,7 @@ class RND2D(Motivator):
 
         obs = self.env.reset()
 
-        self.to(self.env.my_device)
+        self.to(self.inner_env.my_device)
 
         self.updates = 0
 
@@ -217,8 +219,8 @@ class RND2D(Motivator):
 class AE2D(RND2D):
 
     def __init__(self, env, **kwargs):
-        super(AE2D, self).__init__(env_fn, **kwargs)
-        self.learning_rate = 1e-3
+        super(AE2D, self).__init__(env, **kwargs)
+        self.learning_rate = 3e-5
 
         self.my_name = "AE2D"
 
@@ -231,21 +233,21 @@ class AE2D(RND2D):
         prediction = self.predictor(obs)
 
         prediction = prediction.reshape(\
-                self.env.instances, 1, self.env.height, self.env.width)
+                self.inner_env.instances, 1, self.inner_env.height, self.inner_env.width)
 
         return prediction
 
     def initialize_predictor(self):
 
-        dense_in = (self.env.width // 8) * (self.env.height // 8)
-        dense_out = (self.env.width) * (self.env.height)
+        dense_in = (self.inner_env.width // 8) * (self.inner_env.height // 8)
+        dense_out = (self.inner_env.width) * (self.inner_env.height)
 
-        if(0):
+        if(1):
             self.predictor = nn.Sequential(\
-                    nn.Conv2d(1, 8, 3, padding=1, stride=1),\
+                    nn.Conv2d(1, 4, 3, padding=1, stride=1),\
                     nn.ReLU(),\
                     nn.MaxPool2d(2,2,padding=0),\
-                    nn.Conv2d(8, 2, 3, padding=1, stride=1),\
+                    nn.Conv2d(4, 2, 3, padding=1, stride=1),\
                     nn.ReLU(),\
                     nn.MaxPool2d(2,2,padding=0),\
                     nn.ConvTranspose2d(2, 1, 4, padding=1, stride=2),\
@@ -562,7 +564,7 @@ if __name__ == "__main__":
         
         action = action_fn()
 
-        for step in range(3400):
+        for step in range(3160):
 
             obs, reward, d, i = env.step(action)
             rewards.append(reward)
