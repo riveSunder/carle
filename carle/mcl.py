@@ -48,6 +48,14 @@ class Motivator(nn.Module):
 
         return obs, reward, done, info
 
+    def set_no_grad(self):
+
+        pass
+
+    def set_grad(self):
+
+        pass
+
 class RND2D(Motivator):
     """
     An implentation of random network distillation (Burda et al. 2018) 
@@ -70,6 +78,7 @@ class RND2D(Motivator):
         self.batch_size = 64
 
         self.updates = 0
+
 
     def initialize_predictor(self):
 
@@ -111,9 +120,26 @@ class RND2D(Motivator):
                 nn.Tanh()\
                 )
 
+        self.set_grad()
+
+    def set_grad(self):
+
+
+        for param in self.predictor.parameters():
+            param.requires_grad = True
+
         for param in self.random_network.parameters():
             param.requires_grad = False
             
+
+    def set_no_grad(self):
+
+
+        for param in self.predictor.parameters():
+            param.requires_grad = False
+
+        for param in self.random_network.parameters():
+            param.requires_grad = False
 
     def random_forward(self, obs):
 
@@ -276,6 +302,21 @@ class AE2D(RND2D):
 
         self.optimizer = torch.optim.Adam(self.predictor.parameters(),\
                 lr=self.learning_rate)
+
+    def set_grad(self):
+
+        
+
+        for param in self.predictor.parameters():
+            param.requires_grad = True
+
+
+    def set_no_grad(self):
+
+
+
+        for param in self.predictor.parameters():
+            param.requires_grad = False
 
     def update_predictor(self, loss):
 

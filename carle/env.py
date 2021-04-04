@@ -79,9 +79,9 @@ class CARLE(nn.Module):
         for param in self.neighborhood.named_parameters():
             param[1][0] = moore_kernel
 
-
         for param in self.neighborhood.parameters():
             param.requres_grad = False
+
 
     def set_action_padding(self):
 

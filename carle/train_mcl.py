@@ -88,14 +88,6 @@ def train(agent_fn,\
 
     return rewards
 
-        
-
-
-    
-
-
-
-
     
 if __name__ == "__main__":
 
@@ -103,13 +95,14 @@ if __name__ == "__main__":
     my_rules = [[[3],[2,3]],\
             [[3,6,8],[2,4,5]],\
             [[3,6,7,8],[3,4,6,7,8]],\
-            [[2],[0]]]
+            [[3],[0, 2, 3]]]
 
-    my_instances = 1 
+    my_instances = 8 
     my_agent_fn = RandomAgent
-    my_steps = [64, 1024]
+    my_steps = [512, 512]
 
     rewards = train(my_agent_fn, steps=my_steps, instances=my_instances, rules=my_rules)
+
 
     plt.figure()
     plt.plot(rewards)
