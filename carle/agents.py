@@ -6,8 +6,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from carle import AutomaticCellularEnvironment
-from mcl import RND2D, AE2D 
+from carle.env import CARLE
+from carle.mcl import RND2D, AE2D 
 
 import matplotlib.pyplot as plt
 
@@ -19,18 +19,18 @@ class RandomAgent(nn.Module):
 
         self.action_width = kwargs["action_width"] \
                 if "action_width" in kwargs.keys()\
-                else 32
+                else 64
         self.action_height = kwargs["action_height"] \
                 if "action_height" in kwargs.keys()\
-                else 32
+                else 64
         self.observation_width = kwargs["observation_width"] \
-                if "action_width" in kwargs.keys()\
-                else 64
+                if "observatoin_width" in kwargs.keys()\
+                else 256
         self.observation_height = kwargs["observation_height"] \
-                if "action_height" in kwargs.keys()\
-                else 64
+                if "observation_height" in kwargs.keys()\
+                else 256
 
-        self.toggle_rate = 0.020
+        self.toggle_rate = 0.100
 
     def forward(self, obs):
 
@@ -49,16 +49,16 @@ class RandomNetworkAgent(nn.Module):
 
         self.action_width = kwargs["action_width"] \
                 if "action_width" in kwargs.keys()\
-                else 32
+                else 64
         self.action_height = kwargs["action_height"] \
                 if "action_height" in kwargs.keys()\
-                else 32
+                else 64
         self.observation_width = kwargs["observation_width"] \
-                if "action_width" in kwargs.keys()\
-                else 64
+                if "observatoin_width" in kwargs.keys()\
+                else 256
         self.observation_height = kwargs["observation_height"] \
-                if "action_height" in kwargs.keys()\
-                else 64
+                if "observation_height" in kwargs.keys()\
+                else 256
 
         self.depth = 3
         self.filter_dim = 4
