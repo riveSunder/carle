@@ -1,6 +1,15 @@
 """
 endogenous reward system for open-ended learning. 
     mcl stands for mesocorticolimbic system, aka the reward system in the human brain
+    
+    These reward system classes act as wrappers around CARLE, and are invoked as
+
+    `
+    env = MotivatorClass(env)
+    `
+
+    Multiple wrappers can be applied in series, and the original CARLE environment can be 
+    accessed as `env.inner_env`
 """
 import time
 import numpy as np
