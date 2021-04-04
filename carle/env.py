@@ -18,6 +18,8 @@ class CARLE(nn.Module):
         self.inner_env = None
         self.width = kwargs["width"] if "width" in kwargs.keys() else 256
         self.height = kwargs["height"] if "height" in kwargs.keys() else 256
+        self.use_cuda = kwargs["use_cuda"] \
+                if "use_cuda" in kwargs.keys() else False
 
         self.action_width = 64 
         self.action_height = 64  
@@ -47,7 +49,6 @@ class CARLE(nn.Module):
         """
         
         circular = True
-        self.use_cuda = False
 
         moore_kernel = torch.tensor([[1.,1.,1.], [1.,0.,1.], [1.,1.,1.]],\
                 requires_grad=False)
