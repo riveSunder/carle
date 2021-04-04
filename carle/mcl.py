@@ -58,7 +58,7 @@ class RND2D(Motivator):
         
         self.my_name = "RND2D"
 
-        self.learning_rate = 3e-5
+        self.learning_rate = 6e-2
 
         self.reward_scale = 1.0
         self.rnd_dim = 16
@@ -67,7 +67,7 @@ class RND2D(Motivator):
         self.initialize_random_network()
 
         self.buffer_length = 0
-        self.batch_size = 32
+        self.batch_size = 64
 
         self.updates = 0
 
@@ -77,12 +77,15 @@ class RND2D(Motivator):
 
         self.predictor = nn.Sequential(\
                 nn.Conv2d(1, 4, 3, padding=1, stride=1),\
+                nn.Dropout(p=0.1),\
                 nn.ReLU(),\
                 nn.MaxPool2d(2,2,padding=0),\
                 nn.MaxPool2d(2,2,padding=0),\
                 nn.Conv2d(4, 1, 3, padding=1, stride=1),\
+                nn.Dropout(p=0.1),\
                 nn.ReLU(),\
                 nn.MaxPool2d(2,2,padding=0),\
+                nn.Dropout(p=0.1),\
                 nn.Flatten(),\
                 nn.Linear(dense_nodes, self.rnd_dim),\
                 nn.Tanh()\
@@ -220,7 +223,7 @@ class AE2D(RND2D):
 
     def __init__(self, env, **kwargs):
         super(AE2D, self).__init__(env, **kwargs)
-        self.learning_rate = 3e-5
+        self.learning_rate = 9e-2
 
         self.my_name = "AE2D"
 
@@ -245,14 +248,18 @@ class AE2D(RND2D):
         if(1):
             self.predictor = nn.Sequential(\
                     nn.Conv2d(1, 4, 3, padding=1, stride=1),\
+                    nn.Dropout(p=0.1),\
                     nn.ReLU(),\
                     nn.MaxPool2d(2,2,padding=0),\
                     nn.Conv2d(4, 2, 3, padding=1, stride=1),\
+                    nn.Dropout(p=0.1),\
                     nn.ReLU(),\
                     nn.MaxPool2d(2,2,padding=0),\
                     nn.ConvTranspose2d(2, 1, 4, padding=1, stride=2),\
+                    nn.Dropout(p=0.1),\
                     nn.ReLU(),\
                     nn.ConvTranspose2d(1, 1, 4, padding=1, stride=2),\
+                    nn.Dropout(p=0.1),\
                     nn.Sigmoid()\
                     )
         else:
