@@ -1,7 +1,7 @@
 ---
 layout: post
 title: "Update 2021-01-17: Alpha release: support for run-length encoding, stacked reward wrappers, and more." 
-date: 2021-04-01 00:00:00 +0000
+date: 2021-04-05 00:00:00 +0000
 categories: updates
 ---
 
@@ -24,7 +24,7 @@ In order to facilitate human interaction with agents' exploration in CARLE, the 
 Stay tuned for further developments. Meanwhile, here are some of the random baseline evaluation runs, which should make clear the difficulty of relying on proxy reward metrics:
 
 <div align="center">
-<img src="/assets/random_baseline_1.png">
+<img src="/carle/assets/random_baseline_1.png">
 <br>
 Random baseline 1, mean reward per step over 5120 steps in 5 different rulesets: 2.684e-01
 <br><br>
