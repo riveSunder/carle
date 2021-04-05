@@ -24,15 +24,15 @@ In order to facilitate human interaction with agents' exploration in CARLE, the 
 Stay tuned for further developments. Meanwhile, here are some of the random baseline evaluation runs, which should make clear the difficulty of relying on proxy reward metrics:
 
 <div align="center">
-<img src="/assets/random_baseline_1.png">
+<img src="carle/assets/random_baseline_1.png">
 <br>
 Random baseline 1, mean reward per step over 5120 steps in 5 different rulesets: 2.684e-01
 <br><br>
-<img src="/assets/random_baseline_2.png">
+<img src="carle/assets/random_baseline_2.png">
 <br>
 Random baseline 2, mean reward per step over 5120 steps in 5 different rulesets: 3.011e-01
 <br><br>
-<img src="/assets/random_baseline_3.png">
+<img src="carle/assets/random_baseline_3.png">
 <br>
 Random baseline 3, mean reward per step over 5120 steps in 5 different rulesets: 2.690e-01  
 </div>
