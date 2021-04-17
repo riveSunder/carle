@@ -101,9 +101,7 @@ class CARLE(nn.Module):
 
     def reset(self):
         
-        self.universe = 1.0 * \
-                (torch.rand(self.instances, 1, self.height, self.width)\
-                < self.alive_rate)
+        self.universe = torch.zeros(self.instances, 1, self.height, self.width)
 
         self.universe = self.universe.to(self.my_device)
         observation = self.universe
@@ -152,25 +150,37 @@ class CARLE(nn.Module):
         else:
             self.steps_since_action += 1
 
-        my_neighborhood = self.neighborhood(self.universe)
+        if torch.mean(action) == 1.0:
+            """
+            If all toggles are toggled, perform a universe reset.
+            This gives agents a means to 'clear the slate' without relying on
+            external interference i.e. hand-coded resets when an agent is 
+            'stuck.'
+            """
 
-        universe_1 = torch.zeros_like(self.universe) 
+            observation = self.reset()
+        else:
 
-        for b in self.birth:
-            universe_1[((1-self.universe) * (my_neighborhood == b)) == 1] = 1
+            my_neighborhood = self.neighborhood(self.universe)
 
-        for s in self.survive:
-            universe_1[(self.universe * (my_neighborhood == s)) == 1] = 1
+            universe_1 = torch.zeros_like(self.universe) 
 
-        
-        self.universe = universe_1
-        self.step_number += 1
+            for b in self.birth:
+                universe_1[((1-self.universe) * (my_neighborhood == b)) == 1] = 1
 
-        # This environment is open-ended free from exogenous reward,
-        # giving no done signal and a reward of 0.0
-        # episodic constraints and endogenous rewards have to be implemented
-        # by wrappers or agents themselves.
-        observation = self.get_observation()
+            for s in self.survive:
+                universe_1[(self.universe * (my_neighborhood == s)) == 1] = 1
+
+            
+            self.universe = universe_1
+            self.step_number += 1
+
+            # This environment is open-ended free from exogenous reward,
+            # giving no done signal and a reward of 0.0
+            # episodic constraints and endogenous rewards have to be implemented
+            # by wrappers or agents themselves.
+            observation = self.get_observation()
+
         reward = torch.zeros(self.instances, 1).to(self.my_device)
         done = torch.zeros(self.instances, 1)
         info = [{}] * self.instances
