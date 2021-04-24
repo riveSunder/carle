@@ -38,9 +38,29 @@ class CARLE(nn.Module):
         self.set_action_padding()
 
         # Conway's GoL rules
+        self.allowed_rules = [str(num) for num in range(9)]
         self.birth = [3]
         self.survive = [2,3]
 
+
+    def birth_rule_from_string(self, my_string="B3"):
+        self.birth = []
+        for element in my_string:
+            if element in self.allowed_rules:
+                self.birth.append(int(element))
+
+    def survive_rule_from_string(self, my_string="S23"):
+        self.survive = []
+        for element in my_string:
+            if element in self.allowed_rules:
+                self.survive.append(int(element))
+
+    def rules_from_string(self, my_string="B3/S23"):
+
+        temp = my_string.split("/")
+
+        self.birth_rule_from_string(temp[0])
+        self.survive_rule_from_string(temp[1])
 
     def set_neighborhood(self):
         """
