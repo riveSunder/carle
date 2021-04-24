@@ -1,7 +1,7 @@
 import unittest
 import argparse
 
-from test.test_reset import TestReset
+from test.test_env import TestEnv
 
 if __name__ == "__main__":
 

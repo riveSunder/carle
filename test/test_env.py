@@ -6,15 +6,45 @@ import torch
 
 from carle.env import CARLE
 
-class TestReset(unittest.TestCase):
+class TestEnv(unittest.TestCase):
+
+    def setUp(self):
+        """
+        Initialize environment for testing
+        """
+        
+        self.env = CARLE()
+
+    def test_rule_setting(self):
+        """
+        Test setting rules with strings
+        """
+
+        b_target = [0,3,5,7]
+        s_target = [2,4,6,8]
+    
+        set_string_b = "asdfasdfB0357*!@#!@$%"
+        set_string_s = "S2468"
+
+        self.env.birth_rule_from_string(set_string_b)
+        self.env.survive_rule_from_string(set_string_s)
+        
+        self.assertEqual(b_target, self.env.birth)
+        self.assertEqual(s_target, self.env.survive)
+
+        set_string = "B0357/S2468"
+
+        self.env.rules_from_string(set_string)
+
+        self.assertEqual(b_target, self.env.birth)
+        self.assertEqual(s_target, self.env.survive)
+
 
     def test_reset(self):
         """
         Test CARLE's master toggle functionality, where an agent can reset
         the environment by setting all toggles to toggle (value of 1.0). 
         """
-
-        self.env = CARLE()
 
         reset_observation = self.env.reset()
 
