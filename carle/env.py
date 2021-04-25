@@ -271,14 +271,18 @@ class CARLE(nn.Module):
 
                     if len(temp) > 1:
                         row_run = int(temp[:-1])
-                        my_grid[ii:ii+row_run,:] = 0
+
+                        # +1 so that current row doesn't get overwritten 
+                        my_grid[ii+1:ii+row_run,:] = 0
 
                         ii += row_run
                     else:
                         my_grid[ii,jj:] = 0
-
-                        # next row
+                        
+                        # advance to next row
                         ii += 1
+
+
                     jj = 0
                     temp = ""
                     
