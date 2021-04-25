@@ -277,8 +277,9 @@ class CARLE(nn.Module):
 
                         ii += row_run
                     else:
-                        # next row
                         my_grid[ii,jj:] = 0
+                        
+                        # advance to next row
                         ii += 1
 
 
