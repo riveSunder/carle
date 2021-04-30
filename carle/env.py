@@ -50,6 +50,7 @@ class CARLE(nn.Module):
                 self.birth.append(int(element))
 
         self.birth = list(set(self.birth))
+        self.birth.sort()
 
     def survive_rule_from_string(self, my_string="S23"):
         self.survive = []
@@ -58,6 +59,7 @@ class CARLE(nn.Module):
                 self.survive.append(int(element))
 
         self.survive = list(set(self.survive))
+        self.survive.sort()
 
     def rules_from_string(self, my_string="B3/S23"):
 
@@ -335,6 +337,10 @@ class CARLE(nn.Module):
 
                     self.birth = list(set(self.birth))
                     self.survive = list(set(self.survive))
+
+                    self.birth.sort()
+                    self.survive.sort()
+
                     # ignore dimensions (and corner) for now (assuming rle files come from CARLE)
 
                     # set 
