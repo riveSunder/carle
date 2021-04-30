@@ -49,11 +49,15 @@ class CARLE(nn.Module):
             if element in self.allowed_rules:
                 self.birth.append(int(element))
 
+        self.birth = list(set(self.birth))
+
     def survive_rule_from_string(self, my_string="S23"):
         self.survive = []
         for element in my_string:
             if element in self.allowed_rules:
                 self.survive.append(int(element))
+
+        self.survive = list(set(self.survive))
 
     def rules_from_string(self, my_string="B3/S23"):
 
@@ -104,7 +108,6 @@ class CARLE(nn.Module):
 
 
     def set_action_padding(self):
-
 
         assymetry_width = (self.width - self.action_width) % 2
         assymetry_height = (self.height - self.action_height) % 2
@@ -330,6 +333,8 @@ class CARLE(nn.Module):
                         if ss.lower() != "s" and ss.lower() != '\n':
                             self.survive.append(int(ss))
 
+                    self.birth = list(set(self.birth))
+                    self.survive = list(set(self.survive))
                     # ignore dimensions (and corner) for now (assuming rle files come from CARLE)
 
                     # set 
