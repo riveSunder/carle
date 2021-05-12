@@ -82,6 +82,7 @@ class RND2D(Motivator):
 
     def initialize_predictor(self):
 
+        print("initialize predictor")
         dense_nodes = (self.inner_env.width // 8) * (self.inner_env.height // 8)
 
         self.predictor = nn.Sequential(\
@@ -233,8 +234,9 @@ class RND2D(Motivator):
 
     def reset(self):
 
-        self.initialize_predictor()
-        self.initialize_random_network()
+        #self.initialize_predictor()
+        #self.initialize_random_network()
+        
 
         obs = self.env.reset()
 
@@ -267,6 +269,7 @@ class AE2D(RND2D):
         return prediction
 
     def initialize_predictor(self):
+        print("initialize predictor")
 
         dense_in = (self.inner_env.width // 8) * (self.inner_env.height // 8)
         dense_out = (self.inner_env.width) * (self.inner_env.height)
