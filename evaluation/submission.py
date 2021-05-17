@@ -5,8 +5,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from carle.env import CARLE
-from carle.mcl import RND2D, AE2D 
+from carle.carle.env import CARLE
+from carle.carle.mcl import RND2D, AE2D 
 
 import matplotlib.pyplot as plt
 
