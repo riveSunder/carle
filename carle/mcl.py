@@ -36,6 +36,13 @@ class Motivator(nn.Module):
 
         self.env = env
 
+        env.height = self.inner_env.height
+        env.width = self.inner_env.height
+        env.action_height = self.inner_env.action_height
+        env.action_width = self.inner_env.action_width
+        env.birth = self.inner_env.birth
+        env.survive = self.inner_env.survive
+
     def reset(self):
 
         obs = self.env.reset()
@@ -55,6 +62,33 @@ class Motivator(nn.Module):
     def set_grad(self):
 
         pass
+
+class CornerBonus(Motivator):
+
+    def __init__(self, env, **kwargs):
+        super(CornerBonus, self).__init__(env, **kwargs)
+
+        self.my_name = "CornerBonus"
+
+        self.reward_scale = 1.0
+
+        self.corner_mask = torch.zeros(1, 1, self.inner_env.height, self.inner_env.width)
+
+        self.corner_mask[:,:,:16, :16] = 1.0
+
+    def step(self, action):
+
+        obs, reward, done, info = self.env.step(action)
+        
+        reward += self.reward_scale * (self.corner_mask * obs).sum(axis=-1).sum(axis=-1)
+
+        return obs, reward, done, info
+
+    def reset(self):
+
+        obs = self.env.reset()
+
+        return obs
 
 class RND2D(Motivator):
     """
