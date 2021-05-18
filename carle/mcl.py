@@ -36,12 +36,28 @@ class Motivator(nn.Module):
 
         self.env = env
 
-        env.height = self.inner_env.height
-        env.width = self.inner_env.height
-        env.action_height = self.inner_env.action_height
-        env.action_width = self.inner_env.action_width
-        env.birth = self.inner_env.birth
-        env.survive = self.inner_env.survive
+        self.height = self.inner_env.height
+        self.width = self.inner_env.height
+        self.action_height = self.inner_env.action_height
+        self.action_width = self.inner_env.action_width
+        self.birth = self.inner_env.birth
+        self.survive = self.inner_env.survive
+
+    def rules_from_string(self, my_string="B3/S23"):
+    
+        self.inner_env.rules_from_string(my_string)
+        self.birth = self.inner_env.birth
+        self.survive = self.inner_env.survive
+    
+    def birth_rule_from_string(self, my_string="b3"):
+
+        self.inner_env.birth_rule_from_string(my_string)
+        self.birth = self.inner_env.birth
+
+    def survive_rule_from_string(self, my_string="s23"):
+
+        self.inner_env.survive_rule_from_string(my_string)
+        self.survive = self.inner_env.survive
 
     def reset(self):
 
