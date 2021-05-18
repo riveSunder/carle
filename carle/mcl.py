@@ -42,6 +42,7 @@ class Motivator(nn.Module):
         self.action_width = self.inner_env.action_width
         self.birth = self.inner_env.birth
         self.survive = self.inner_env.survive
+        self.my_device = self.inner_env.my_device
 
     def rules_from_string(self, my_string="B3/S23"):
     
@@ -88,15 +89,20 @@ class CornerBonus(Motivator):
 
         self.reward_scale = 1.0
 
-        self.corner_mask = torch.zeros(1, 1, self.inner_env.height, self.inner_env.width)
+        self.reward_mask = torch.zeros(1, 1, self.inner_env.height, \
+                self.inner_env.width).to(self.my_device)
+        self.punish_mask = torch.zeros(1, 1, self.inner_env.height, \
+                self.inner_env.width).to(self.my_device)
 
-        self.corner_mask[:,:,:16, :16] = 1.0
+        self.reward_mask[:, :, :16, :16] = 1.0
+        self.punish_mask[:, :, 16:32, 16:32] = -1.0
 
     def step(self, action):
 
         obs, reward, done, info = self.env.step(action)
         
-        reward += self.reward_scale * (self.corner_mask * obs).sum(axis=-1).sum(axis=-1)
+        reward += self.reward_scale * (self.reward_mask * obs).sum(axis=-1).sum(axis=-1)
+        reward += self.reward_scale * (self.punish_mask * obs).sum(axis=-1).sum(axis=-1)
 
         return obs, reward, done, info
 
