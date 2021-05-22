@@ -151,7 +151,7 @@ class CARLE(nn.Module):
         action = action.to(self.my_device)
 
         # this may be better as an assertion line to avoid silent failures
-        action = action[0, 0, :self.action_width, :self.action_height]
+        action = action[:, :, :self.action_width, :self.action_height]
 
         action = self.action_padding(action)
 
