@@ -95,7 +95,9 @@ class CornerBonus(Motivator):
                 self.inner_env.width).to(self.my_device)
 
         self.reward_mask[:, :, :16, :16] = 1.0
-        self.punish_mask[:, :, 16:32, 16:32] = -1.0
+        self.punish_mask[:, :, -16:, -16:] = -1.0
+        self.punish_mask[:, :, :16, -16:] = -1.0
+        self.punish_mask[:, :, -16:, :16] = -1.0
 
     def step(self, action):
 
