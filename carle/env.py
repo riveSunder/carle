@@ -21,6 +21,9 @@ class CARLE(nn.Module):
         self.use_cuda = kwargs["use_cuda"] \
                 if "use_cuda" in kwargs.keys() else False
 
+        device_str = kwargs["device"] if "device" in kwargs.keys() else "cpu"
+        self.my_device = torch.device(device_str)
+
         self.action_width = 64 
         self.action_height = 64  
 
@@ -87,17 +90,8 @@ class CARLE(nn.Module):
         self.neighborhood = nn.Conv2d(1, 1, 3, padding=1,\
                 padding_mode=my_mode, bias=False)
 
-
-        if torch.cuda.is_available() and self.use_cuda:
-            self.my_device = "cuda"
-            self.neighborhood.to(self.my_device)
-            self.to(self.my_device)
-
-            # run on multiple gpus if possible
-            #self.neighborhood = nn.DataParallel(self.neighborhood)
-        else:
-            self.my_device = "cpu"
-            self.neighborhood.to(self.my_device)
+        self.neighborhood.to(self.my_device)
+        self.to(self.my_device)
 
         for param in self.neighborhood.parameters():
             param.requres_grad = False
