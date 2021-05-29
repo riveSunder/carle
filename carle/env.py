@@ -21,8 +21,15 @@ class CARLE(nn.Module):
         self.use_cuda = kwargs["use_cuda"] \
                 if "use_cuda" in kwargs.keys() else False
 
-        device_str = kwargs["device"] if "device" in kwargs.keys() else "cpu"
-        self.my_device = torch.device(device_str)
+        if "device" in kwargs.keys():
+            device_str = kwargs["device"]
+            self.my_device = torch.device(device_str)
+        elif self.use_cuda:
+            self.my_device = torch.device("cuda")
+        else:
+            self.my_device = torch.device("cpu")
+
+        
 
         self.action_width = 64 
         self.action_height = 64  

@@ -95,9 +95,11 @@ class CornerBonus(Motivator):
                 self.inner_env.width).to(self.my_device)
 
         self.reward_mask[:, :, :16, :16] = 1.0
-        self.punish_mask[:, :, -16:, -16:] = -1.0
-        self.punish_mask[:, :, :16, -16:] = -1.0
-        self.punish_mask[:, :, -16:, :16] = -1.0
+        for ii in range(96):
+            self.reward_mask[:, :, ii-4:ii+4, ii-4:ii+4] = 1.0
+
+        self.punish_mask[:, :, -64:, -64:] = -1.0
+        self.punish_mask[:, :, :64, -64:] = -1.0
 
     def step(self, action):
 
@@ -446,18 +448,35 @@ class SpeedDetector(Motivator):
 
         self.reward_scale = 1.0
 
-        self.com = None 
+        self.center_of_mass = None 
 
         self.speed_modulator = 32.0
 
-        self.mass_weight_h = torch.arange(self.inner_env.height).reshape(1, -1)
-        self.mass_weight_w = torch.arange(self.inner_env.width).reshape(-1, 1)
+        self.mass_weight_w = torch.arange(self.inner_env.height)\
+                .reshape(1, -1).to(self.my_device)
+        self.mass_weight_h = torch.arange(self.inner_env.width)\
+                .reshape(-1, 1).to(self.my_device)
+
+        # make a mass to exclude the action area: gliders/mobility is only 
+        # rewarded outside of it. 
+
+        action_mask = torch.ones(1, 1, \
+                self.action_height, self.action_width).to(self.my_device)
+
+        action_mask = self.inner_env.action_padding(action_mask)
+
+        action_mask = torch.ones_like(action_mask) - action_mask
+
+        # mask the center of mass matrices
+        self.mass_weight_h = self.mass_weight_h * action_mask
+        self.mass_weight_w = self.mass_weight_w * action_mask
 
         self.growing_steps = 0
         self.smooth_velocity = None
         self.speed = None
 
-        self.velocity = np.array([0.0, 0.0])
+        self.velocity = torch.tensor([self.inner_env.instances, 1, 0., 0.])\
+                .to(self.my_device)
 
         self.live_cells = None
 
@@ -465,56 +484,28 @@ class SpeedDetector(Motivator):
 
         obs, reward, done, info = self.env.step(action)
 
-        live_cells = torch.sum(self.inner_env.universe)
-        center_of_mass_h = torch.sum(self.inner_env.universe * self.mass_weight_h)\
-                / live_cells
-        center_of_mass_w = torch.sum(self.inner_env.universe * self.mass_weight_w)\
-                / live_cells
+        live_cells = torch.sum(self.inner_env.universe, dim=[1,2,3])
+        
 
-        com = np.array([center_of_mass_h, center_of_mass_w])
+        center_of_mass_h = torch.sum(obs * self.mass_weight_h, dim=[1,2,3]) \
+                / (live_cells + 1e-7)
+        center_of_mass_w = torch.sum(obs * self.mass_weight_w, dim=[1,2,3]) \
+                / (live_cells + 1e-7)
 
-        if not(torch.sum(action)):
+        center_of_mass = torch.cat([center_of_mass_h.unsqueeze(0), \
+                center_of_mass_w.unsqueeze(0)])
 
-            alpha = 1. / self.speed_modulator
-
-            if self.com is None:
-                self.com = com
-            else:
-                velocity = self.com - com
-
-                # exponential average of velocity
-                if self.smooth_velocity is None:
-                    self.smooth_velocity = velocity
-                else:
-                    self.smooth_velocity = (1. - alpha) * self.smooth_velocity + alpha * velocity 
-
-                speed = np.sqrt(np.sum((velocity)**2))
-                self.speed = np.sqrt( np.sum((self.smooth_velocity)**2) )
-                self.velocity = velocity
-
-                if self.com[0]  == com[0] and self.com[1] == com[1]:
-                    self.speed = 0.0
-                self.com = com
-
-                if self.speed > 1 / (self.speed_modulator):
-                    self.growing_steps += 1
-                else:
-                    self.growing_steps = 0
-
-                if self.growing_steps > (self.speed_modulator / 2):
-
-                    # intended to give a reward for any pattern traveling at c/(speed_modulator) or faster
-                    # for at least speed_modulator/2 steps
-                    # and weighted by the size of the spaceship
-
-                    reward += self.reward_scale * live_cells
-            
-                
-
+        if self.center_of_mass is None:
+            self.center_of_mass = center_of_mass
         else:
+            velocity = self.center_of_mass - center_of_mass
 
-            self.growing_steps = 0
-            self.speed = 0.0 
+            speed = torch.sqrt(torch.sum(torch.pow(velocity, 2)))
+
+            self.speed = speed
+            self.velocity = velocity
+
+            reward += speed
 
         self.live_cells = live_cells
 
