@@ -504,6 +504,7 @@ class SpeedDetector(Motivator):
 
             self.speed = speed
             self.velocity = velocity
+            self.center_of_mass = center_of_mass
 
             reward += speed
 
