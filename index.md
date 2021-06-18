@@ -4,7 +4,9 @@
 
 layout: home
 ---
-.
+
+*This gh-pages page is deprecated. Check out the [Carle's Game Blog](https://rivesunder.github.io/carles_game), [challenge guidelines](https://https:github.com/rivesunder/carles_game), or the [example](https://github.com/rivesunder/moving_in_morley) [submissions](https://github.com/rivesunder/harli_learning). 
+
 ## An Open-Ended Challenge in Simple Complexity, Exploration, and Machine Creativity
 
 Carle's Game is an open-ended challenge for creative machine intelligences based on the Cellular Automata Reinforcement Learning Environment ([CARLE](https://github.com/riveSunder/carle)). CARLE is a flexible, fast environment that supports arbitrary Life-like cellular automata (CA) rule sets. 
