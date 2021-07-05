@@ -5,7 +5,7 @@
 layout: home
 ---
 
-**This gh-pages page is deprecated. Check out the [Carle's Game Blog](https://github.com/rivesunder/carles_game), [challenge guidelines](https://https:github.com/rivesunder/carles_game), or the [example](https://github.com/rivesunder/moving_in_morley) [submissions](https://github.com/rivesunder/harli_learning).**
+**This gh-pages page is deprecated. Check out the [Carle's Game Blog](https://rivesunder.github.io/carles_game), [challenge guidelines](https://github.com/rivesunder/carles_game), or the [example](https://github.com/rivesunder/moving_in_morley) [submissions](https://github.com/rivesunder/harli_learning).**
 
 ## An Open-Ended Challenge in Simple Complexity, Exploration, and Machine Creativity
 
