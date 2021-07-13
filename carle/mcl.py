@@ -80,6 +80,58 @@ class Motivator(nn.Module):
 
         pass
 
+class MorphoBonus(Motivator):
+    """
+    A bonus for matching a desired body/machine plan
+    """
+    
+    def __init__(self, env, **kwargs):
+        super(MorphoBonus, self).__init__(env, **kwargs)
+
+        self.my_name = "MorphoBonus"
+
+        self.reward_scale = 1.0
+        self.target_patterns = torch.Tensor()
+
+        self.add_default_patterns()
+
+    def add_default_patterns(self):
+    
+        self.add_rle_pattern("spaceship_duck.rle")
+        self.add_rle_pattern("spaceship_step.rle")
+
+    def add_rle_pattern(self, rle_path, dim=8):
+
+        pad_1 = nn.ZeroPad2d((1,1,2,1))
+
+        my_rle = self.env.read_rle(rle_path)
+        pattern = pad_1(self.env.rle_to_grid(my_rle))[:dim, :dim]
+
+        pattern[pattern == 0] = -1
+        pattern = pattern.unsqueeze(0).unsqueeze(0)
+
+        self.target_patterns = torch.cat([self.target_patterns, pattern])
+        self.target_patterns = torch.cat([self.target_patterns, \
+                pattern.flip(2)])
+        self.target_patterns = torch.cat([self.target_patterns, \
+                pattern.flip(3)])
+        self.target_patterns = torch.cat([self.target_patterns, \
+                pattern.transpose(2,3).flip(2)])
+        self.target_patterns = torch.cat([self.target_patterns, \
+                pattern.transpose(2,3).flip(3)])
+        self.target_patterns = torch.cat([self.target_patterns, \
+                pattern.transpose(2,3)])
+
+    def step(self, action):
+
+        obs, reward, done, info = self.env.step(action)
+
+        conv_obs = F.conv2d(obs, self.target_patterns)
+
+        reward += self.reward_scale * conv_obs.max()
+
+        return obs, reward, done, info
+
 class CornerBonus(Motivator):
 
     def __init__(self, env, **kwargs):
