@@ -23,13 +23,18 @@ class CARLE(nn.Module):
 
         if "device" in kwargs.keys():
             device_str = kwargs["device"]
-            self.my_device = torch.device(device_str)
+
+            if device_str in ["cpu", "cuda",\
+                    "cuda:0", "cuda:1", "cuda:2", "cuda:3"]:
+                self.my_device = torch.device(device_str)
         elif self.use_cuda:
             self.my_device = torch.device("cuda")
         else:
             self.my_device = torch.device("cpu")
 
-        
+
+        self.use_grad = kwargs["use_grad"] \
+                if "use_grad" in kwargs.keys() else False
 
         self.action_width = 64 
         self.action_height = 64  
@@ -101,13 +106,13 @@ class CARLE(nn.Module):
         self.to(self.my_device)
 
         for param in self.neighborhood.parameters():
-            param.requres_grad = False
+            param.requres_grad = self.use_grad
 
         for param in self.neighborhood.named_parameters():
             param[1][0] = moore_kernel
 
         for param in self.neighborhood.parameters():
-            param.requres_grad = False
+            param.requres_grad = self.use_grad
 
 
     def set_action_padding(self):
@@ -149,15 +154,25 @@ class CARLE(nn.Module):
         while len(action.shape) < 4:
             action = action.unsqueeze(0)
 
-        action = action.to(self.my_device)
+        if action.device != self.my_device:
+            action = action.to(self.my_device)
 
         # this may be better as an assertion line to avoid silent failures
-        action = action[:, :, :self.action_width, :self.action_height]
+        #action = action[:, :, :self.action_width, :self.action_height]
 
-        action = self.action_padding(action)
+        if action.shape[1] > self.action_width and action.shape[1] < self.width: 
+            off_y = (self.width - self.action_width) // 2
+            off_x = (self.height - self.action_height) // 2
+            action_crop = action[:, :, off_y:self.action_width, off_x:self.action_height]
+        else:
+            action_crop = action
+        assert action_crop.shape[2] == self.action_width
+        assert action_crop.shape[3] == self.action_height
+
+        action_crop = self.action_padding(action_crop)
 
         # toggle cells according to actions
-        self.universe = 1.0 * torch.logical_xor(self.universe, action)
+        self.universe = 1.0 * torch.logical_xor(self.universe, action_crop.detach())
 
     def get_observation(self):
 
@@ -165,6 +180,7 @@ class CARLE(nn.Module):
 
     def step(self, action):
         
+        # always apply action
         if torch.sum(action):
             self.action = action
 
@@ -175,6 +191,12 @@ class CARLE(nn.Module):
 
         else:
             self.steps_since_action += 1
+            self.action = action
+
+            if self.logging:
+                self.log_universe()
+
+            self.apply_action(action)
 
         if torch.mean(action) == 1.0:
             """

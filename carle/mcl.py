@@ -11,6 +11,8 @@ endogenous reward system for open-ended learning.
     Multiple wrappers can be applied in series, and the original CARLE environment can be 
     accessed as `env.inner_env`
 """
+import os
+
 import time
 import numpy as np
 
@@ -88,27 +90,47 @@ class MorphoBonus(Motivator):
     def __init__(self, env, **kwargs):
         super(MorphoBonus, self).__init__(env, **kwargs)
 
+        self.use_grad = kwargs["use_grad"] if "kwargs"  in kwargs.keys() else False
         self.my_name = "MorphoBonus"
 
         self.reward_scale = 1.0
-        self.target_patterns = torch.Tensor()
+        self.target_patterns = torch.Tensor().to(self.my_device)
 
         self.add_default_patterns()
 
+        if self.use_grad:
+            # set all parameters in this wrapper and inner_env 
+            # to requires_grad = True
+            # note this currently doesn't support stalking multiple reward 
+            # wrappers, will need to decide how to implement it
+
+            for param in self.inner_env.parameters():
+                param.requires_grad = True
+
+            self.target_patterns.requires_grad = True
+
     def add_default_patterns(self):
     
-        self.add_rle_pattern("spaceship_duck.rle")
-        self.add_rle_pattern("spaceship_step.rle")
+        file_path = os.path.split(os.path.abspath(__file__))[0]
+        
+        #self.add_rle_pattern(os.path.join(file_path, "spaceship_duck.rle"))
+        #self.add_rle_pattern(os.path.join(file_path, "spaceship_step.rle"))
+        self.add_rle_pattern(os.path.join(file_path, "glider_1.rle"))
+        self.add_rle_pattern(os.path.join(file_path, "glider_2.rle"))
+
 
     def add_rle_pattern(self, rle_path, dim=8):
 
         pad_1 = nn.ZeroPad2d((1,1,2,1))
 
-        my_rle = self.env.read_rle(rle_path)
-        pattern = pad_1(self.env.rle_to_grid(my_rle))[:dim, :dim]
+        my_rle = self.inner_env.read_rle(rle_path)
+        pattern = pad_1(self.inner_env.rle_to_grid(my_rle))[:dim, :dim]
 
         pattern[pattern == 0] = -1
-        pattern = pattern.unsqueeze(0).unsqueeze(0)
+        pattern = pattern.unsqueeze(0).unsqueeze(0).to(self.my_device)
+
+        #normalize kernel
+        pattern[pattern == 1] *= 15. / pattern[pattern==1].sum()
 
         self.target_patterns = torch.cat([self.target_patterns, pattern])
         self.target_patterns = torch.cat([self.target_patterns, \
@@ -121,16 +143,34 @@ class MorphoBonus(Motivator):
                 pattern.transpose(2,3).flip(3)])
         self.target_patterns = torch.cat([self.target_patterns, \
                 pattern.transpose(2,3)])
+        
 
     def step(self, action):
 
+        my_grid = torch.abs(self.inner_env.universe.clone() - action)
+        conv_obs = F.conv2d(my_grid, self.target_patterns)
+
         obs, reward, done, info = self.env.step(action)
 
-        conv_obs = F.conv2d(obs, self.target_patterns)
+        my_max = torch.max(torch.max(torch.max(conv_obs, dim=3)[0], dim=2)[0], dim=1)[0]
+        my_min = torch.min(torch.min(torch.min(conv_obs, dim=3)[0], dim=2)[0], dim=1)[0]
 
-        reward += self.reward_scale * conv_obs.max()
+
+        reward += self.reward_scale * (my_max.unsqueeze(-1) + my_min.unsqueeze(-1)) #* conv_obs.max() + conv_obs.min()
 
         return obs, reward, done, info
+
+    def reset(self):
+
+        obs = self.env.reset()
+
+        # imagine a little seed for nucleating patterns
+        obs += (torch.rand(obs.shape) > 0.995).to(self.my_device).float()
+        #obs = obs.to(self.my_device)
+        #obs[:,:,32:35,32:35].fill(1.0)
+        #obs += torch.rand_like(obs)
+        
+        return obs
 
 class CornerBonus(Motivator):
 
