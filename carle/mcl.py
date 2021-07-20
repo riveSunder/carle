@@ -533,6 +533,142 @@ class AE2D(RND2D):
 
         return loss
 
+class PredictionBonus(AE2D):
+
+    def __init__(self, env, **kwargs):
+        super(PredictionBonus, self).__init__(env, **kwargs)
+
+        self.learning_rate = 3e-4
+
+        self.my_name = "PredictionBonus"
+
+        self.prediction_steps = 5
+
+        self.grid_buffer = []
+
+
+    def forward(self, obs):
+
+        prediction = self.predictor(obs)
+
+        prediction = prediction.reshape(\
+                self.inner_env.instances, 1, self.inner_env.height, self.inner_env.width)
+
+        return prediction
+
+    def get_bonus(self, obs):
+
+        self.grid_buffer.append(obs)
+
+        loss = torch.zeros(obs.shape[0])
+
+        for step in range(1, len(self.grid_buffer)):
+
+            # feed frame to model
+            prediction = self.forward(self.grid_buffer[step-1])
+            # target is the next frame
+            my_target = self.grid_buffer[step]
+
+            loss += torch.mean(torch.abs((my_target-prediction)**2),\
+                    dim=[1,2,3]) #+ my_target.mean(dim=[1,2,3])
+
+        if len(self.grid_buffer) > self.prediction_steps:
+            _ = self.grid_buffer.pop(0)
+
+        # loss is a tensor used for vectorized rnd reward bonuses
+        return loss
+
+    def get_bonus_update(self, obs):
+
+        self.predictor.zero_grad()
+
+        # loss is a tensor used for vectorized rnd reward bonuses
+        loss = self.get_bonus(obs)
+
+        # update loss is a scalar used for backprop
+        update_loss = torch.mean(loss)
+
+        self.update_predictor(update_loss)
+
+        return loss
+
+    def get_bonus_accumulate(self, obs):
+
+        if self.buffer_length == 0:
+            self.predictor.zero_grad()
+            self.accumulate_loss = 0.0
+
+        loss = self.get_bonus(obs)
+
+        self.accumulate_loss += torch.mean(loss)
+
+        self.buffer_length += 1
+
+        if self.buffer_length >= self.batch_size:
+            self.accumulate_loss = self.accumulate_loss / self.batch_size
+
+            self.update_predictor(self.accumulate_loss)
+
+            self.buffer_length = 0
+
+        return loss
+
+    def get_bonus_update(self, obs):
+
+        self.predictor.zero_grad()
+
+        # loss is a tensor used for vectorized rnd reward bonuses
+        loss = self.get_bonus(obs)
+
+        # update loss is a scalar used for backprop
+        update_loss = torch.mean(loss)
+
+        self.update_predictor(update_loss)
+
+        return loss
+
+    def get_bonus_accumulate(self, obs):
+
+        if self.buffer_length == 0:
+            self.predictor.zero_grad()
+            self.accumulate_loss = 0.0
+
+        loss = self.get_bonus(obs)
+
+        self.accumulate_loss += torch.mean(loss)
+
+        self.buffer_length += 1
+
+        if self.buffer_length >= self.batch_size:
+            self.accumulate_loss = self.accumulate_loss / self.batch_size
+
+            self.update_predictor(self.accumulate_loss)
+
+            self.buffer_length = 0
+
+        return loss.detach()
+
+    def step(self, action):
+
+        action = action.to(self.inner_env.my_device)
+        obs, reward, done, info = self.env.step(action)
+
+        prediction_bonus = self.get_bonus_accumulate(obs).unsqueeze(1)
+
+        bonus = (1.0 -  prediction_bonus) #+ (obs.mean(dim=[1,2,3]) )
+        my_mean = obs.mean(dim=[1,2,3])
+
+        for ii in range(my_mean.shape[0]):
+            if my_mean[ii] == 0.0:
+                bonus[ii] *= 0.0
+
+
+        reward += self.reward_scale * bonus
+
+        self.live_cells = obs.sum()
+
+        return obs, reward, done, info
+
 class SpeedDetector(Motivator):
 
     def __init__(self, env, **kwargs):
@@ -700,19 +836,17 @@ if __name__ == "__main__":
 
 
     env = CARLE() 
-    env = PufferDetector(env)
+    env = PredictionBonus(env)
+    #env = PufferDetector(env)
     #env = SpeedDetector(env)
 
     #rules for Life
-    env.inner_env.birth = [3,6,8]
-    ss = [2,4,5]
+    env.inner_env.birth = [3]
+    env.inner_env.survive = [2,3]
 
     action_fn = get_morley_puffer
-    print("survival rules are ", ss)
-    print(action_fn)
-    env.inner_env.survive = ss
 
-    for action_fn in [get_glider, get_morley_puffer, get_symmetric_action]:
+    for action_fn in [get_glider]: #, get_morley_puffer, get_symmetric_action]:
 
         obs = env.reset()
         sum_reward = 0.0
@@ -721,7 +855,10 @@ if __name__ == "__main__":
         
         action = action_fn()
 
-        for step in range(3400):
+        for step in range(1024):
+            # action (glider, then no toggles)
+            # sets up predictable sequence
+            # bonus should go up
 
             obs, reward, d, i = env.step(action)
             rewards.append(reward)
@@ -732,47 +869,30 @@ if __name__ == "__main__":
 
             sum_reward += reward
 
-        print("reward sum ", sum_reward)
-        
-        plt.figure()
-        plt.plot(rewards)
-        plt.plot(cells[1:]/ np.max(cells[1:]))
-        
-    env.reward_scale = 0.0
-    env = SpeedDetector(env)
-    env.inner_env.birth = [3]
-    ss = [2,3]
+        for step in range(512):
 
-    action_fn = get_glider
-    print("survival rules are ", ss)
-    print(action_fn)
-    env.inner_env.survive = ss
+            # random action, predictability reward should plummet
 
-
-    for action_fn in [get_glider, get_morley_puffer, get_symmetric_action]:
-        obs = env.reset()
-        sum_reward = 0.0
-        rewards = []
-        cells = []
-        
-        action = action_fn()
-
-        for step in range(3160):
-
+            action = (torch.rand_like(action) > 0.95).float()
             obs, reward, d, i = env.step(action)
             rewards.append(reward)
             
-            cells.append(env.speed)
+            cells.append(env.live_cells)
 
-            action *= 0.0
 
             sum_reward += reward
-
         print("reward sum ", sum_reward)
         
         plt.figure()
-        plt.plot(rewards)
-        plt.plot(cells[1:]/ np.max(cells[1:]))
+        plt.plot(rewards, lw=4, label="rewards")
+        #plt.plot(cells, label = "live cells")
+
+        plt.legend()
+
+        plt.figure()
+
+        plt.imshow(obs[0].detach().squeeze())
+
+
+        
     plt.show()
-
-
