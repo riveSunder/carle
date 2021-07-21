@@ -576,7 +576,13 @@ class PredictionBonus(AE2D):
             _ = self.grid_buffer.pop(0)
 
         # loss is a tensor used for vectorized rnd reward bonuses
+
+        if len(self.grid_buffer) < self.prediction_steps:
+            loss += 1
+
         return loss
+
+
 
     def get_bonus_update(self, obs):
 
