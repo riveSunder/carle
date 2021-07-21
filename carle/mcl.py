@@ -11,6 +11,8 @@ endogenous reward system for open-ended learning.
     Multiple wrappers can be applied in series, and the original CARLE environment can be 
     accessed as `env.inner_env`
 """
+import os
+
 import time
 import numpy as np
 
@@ -79,6 +81,96 @@ class Motivator(nn.Module):
     def set_grad(self):
 
         pass
+
+class MorphoBonus(Motivator):
+    """
+    A bonus for matching a desired body/machine plan
+    """
+    
+    def __init__(self, env, **kwargs):
+        super(MorphoBonus, self).__init__(env, **kwargs)
+
+        self.use_grad = kwargs["use_grad"] if "kwargs"  in kwargs.keys() else False
+        self.my_name = "MorphoBonus"
+
+        self.reward_scale = 1.0
+        self.target_patterns = torch.Tensor().to(self.my_device)
+
+        self.add_default_patterns()
+
+        if self.use_grad:
+            # set all parameters in this wrapper and inner_env 
+            # to requires_grad = True
+            # note this currently doesn't support stalking multiple reward 
+            # wrappers, will need to decide how to implement it
+
+            for param in self.inner_env.parameters():
+                param.requires_grad = True
+
+            self.target_patterns.requires_grad = True
+
+    def add_default_patterns(self):
+    
+        file_path = os.path.split(os.path.abspath(__file__))[0]
+        
+        #self.add_rle_pattern(os.path.join(file_path, "spaceship_duck.rle"))
+        #self.add_rle_pattern(os.path.join(file_path, "spaceship_step.rle"))
+        self.add_rle_pattern(os.path.join(file_path, "glider_1.rle"))
+        self.add_rle_pattern(os.path.join(file_path, "glider_2.rle"))
+
+
+    def add_rle_pattern(self, rle_path, dim=8):
+
+        pad_1 = nn.ZeroPad2d((1,1,2,1))
+
+        my_rle = self.inner_env.read_rle(rle_path)
+        pattern = pad_1(self.inner_env.rle_to_grid(my_rle))[:dim, :dim]
+
+        pattern[pattern == 0] = -1
+        pattern = pattern.unsqueeze(0).unsqueeze(0).to(self.my_device)
+
+        #normalize kernel
+        pattern[pattern == 1] *= 15. / pattern[pattern==1].sum()
+
+        self.target_patterns = torch.cat([self.target_patterns, pattern])
+        self.target_patterns = torch.cat([self.target_patterns, \
+                pattern.flip(2)])
+        self.target_patterns = torch.cat([self.target_patterns, \
+                pattern.flip(3)])
+        self.target_patterns = torch.cat([self.target_patterns, \
+                pattern.transpose(2,3).flip(2)])
+        self.target_patterns = torch.cat([self.target_patterns, \
+                pattern.transpose(2,3).flip(3)])
+        self.target_patterns = torch.cat([self.target_patterns, \
+                pattern.transpose(2,3)])
+        
+
+    def step(self, action):
+
+        my_grid = torch.abs(self.inner_env.universe.clone() - action)
+        conv_obs = F.conv2d(my_grid, self.target_patterns)
+
+        obs, reward, done, info = self.env.step(action)
+
+        my_max = torch.max(torch.max(torch.max(conv_obs, dim=3)[0], dim=2)[0], dim=1)[0]
+        my_min = torch.min(torch.min(torch.min(conv_obs, dim=3)[0], dim=2)[0], dim=1)[0]
+
+
+        reward += self.reward_scale * (my_max.unsqueeze(-1) + my_min.unsqueeze(-1)) #* conv_obs.max() + conv_obs.min()
+
+        return obs, reward, done, info
+
+    def reset(self):
+
+        obs = self.env.reset()
+
+        # imagine a little seed for nucleating patterns
+        obs += (torch.rand(obs.shape) > 0.995).to(self.my_device).float()
+        #obs = obs.to(self.my_device)
+        #obs[:,:,32:35,32:35].fill(1.0)
+        #obs += torch.rand_like(obs)
+        
+        return obs
 
 class CornerBonus(Motivator):
 
@@ -441,6 +533,148 @@ class AE2D(RND2D):
 
         return loss
 
+class PredictionBonus(AE2D):
+
+    def __init__(self, env, **kwargs):
+        super(PredictionBonus, self).__init__(env, **kwargs)
+
+        self.learning_rate = 3e-4
+
+        self.my_name = "PredictionBonus"
+
+        self.prediction_steps = 5
+
+        self.grid_buffer = []
+
+
+    def forward(self, obs):
+
+        prediction = self.predictor(obs)
+
+        prediction = prediction.reshape(\
+                self.inner_env.instances, 1, self.inner_env.height, self.inner_env.width)
+
+        return prediction
+
+    def get_bonus(self, obs):
+
+        self.grid_buffer.append(obs)
+
+        loss = torch.zeros(obs.shape[0])
+
+        for step in range(1, len(self.grid_buffer)):
+
+            # feed frame to model
+            prediction = self.forward(self.grid_buffer[step-1])
+            # target is the next frame
+            my_target = self.grid_buffer[step]
+
+            loss += torch.mean(torch.abs((my_target-prediction)**2),\
+                    dim=[1,2,3]) #+ my_target.mean(dim=[1,2,3])
+
+        if len(self.grid_buffer) > self.prediction_steps:
+            _ = self.grid_buffer.pop(0)
+
+        # loss is a tensor used for vectorized rnd reward bonuses
+
+        if len(self.grid_buffer) < self.prediction_steps:
+            loss += 1
+
+        return loss
+
+
+
+    def get_bonus_update(self, obs):
+
+        self.predictor.zero_grad()
+
+        # loss is a tensor used for vectorized rnd reward bonuses
+        loss = self.get_bonus(obs)
+
+        # update loss is a scalar used for backprop
+        update_loss = torch.mean(loss)
+
+        self.update_predictor(update_loss)
+
+        return loss
+
+    def get_bonus_accumulate(self, obs):
+
+        if self.buffer_length == 0:
+            self.predictor.zero_grad()
+            self.accumulate_loss = 0.0
+
+        loss = self.get_bonus(obs)
+
+        self.accumulate_loss += torch.mean(loss)
+
+        self.buffer_length += 1
+
+        if self.buffer_length >= self.batch_size:
+            self.accumulate_loss = self.accumulate_loss / self.batch_size
+
+            self.update_predictor(self.accumulate_loss)
+
+            self.buffer_length = 0
+
+        return loss
+
+    def get_bonus_update(self, obs):
+
+        self.predictor.zero_grad()
+
+        # loss is a tensor used for vectorized rnd reward bonuses
+        loss = self.get_bonus(obs)
+
+        # update loss is a scalar used for backprop
+        update_loss = torch.mean(loss)
+
+        self.update_predictor(update_loss)
+
+        return loss
+
+    def get_bonus_accumulate(self, obs):
+
+        if self.buffer_length == 0:
+            self.predictor.zero_grad()
+            self.accumulate_loss = 0.0
+
+        loss = self.get_bonus(obs)
+
+        self.accumulate_loss += torch.mean(loss)
+
+        self.buffer_length += 1
+
+        if self.buffer_length >= self.batch_size:
+            self.accumulate_loss = self.accumulate_loss / self.batch_size
+
+            self.update_predictor(self.accumulate_loss)
+
+            self.buffer_length = 0
+
+        return loss.detach()
+
+    def step(self, action):
+
+        action = action.to(self.inner_env.my_device)
+        obs, reward, done, info = self.env.step(action)
+
+        prediction_bonus = self.get_bonus_accumulate(obs).unsqueeze(1)
+
+        bonus = (1.0 -  prediction_bonus) #+ (obs.mean(dim=[1,2,3]) )
+        my_mean = obs.mean(dim=[1,2,3])
+
+        for ii in range(my_mean.shape[0]):
+            if my_mean[ii] == 0.0:
+                bonus[ii] *= 0.0
+
+
+        reward += self.reward_scale * bonus
+
+        self.live_cells = obs.sum()
+
+        return obs, reward, done, info
+
 class SpeedDetector(Motivator):
 
     def __init__(self, env, **kwargs):
@@ -608,19 +842,17 @@ if __name__ == "__main__":
 
 
     env = CARLE() 
-    env = PufferDetector(env)
+    env = PredictionBonus(env)
+    #env = PufferDetector(env)
     #env = SpeedDetector(env)
 
     #rules for Life
-    env.inner_env.birth = [3,6,8]
-    ss = [2,4,5]
+    env.inner_env.birth = [3]
+    env.inner_env.survive = [2,3]
 
     action_fn = get_morley_puffer
-    print("survival rules are ", ss)
-    print(action_fn)
-    env.inner_env.survive = ss
 
-    for action_fn in [get_glider, get_morley_puffer, get_symmetric_action]:
+    for action_fn in [get_glider]: #, get_morley_puffer, get_symmetric_action]:
 
         obs = env.reset()
         sum_reward = 0.0
@@ -629,7 +861,10 @@ if __name__ == "__main__":
         
         action = action_fn()
 
-        for step in range(3400):
+        for step in range(1024):
+            # action (glider, then no toggles)
+            # sets up predictable sequence
+            # bonus should go up
 
             obs, reward, d, i = env.step(action)
             rewards.append(reward)
@@ -640,47 +875,30 @@ if __name__ == "__main__":
 
             sum_reward += reward
 
-        print("reward sum ", sum_reward)
-        
-        plt.figure()
-        plt.plot(rewards)
-        plt.plot(cells[1:]/ np.max(cells[1:]))
-        
-    env.reward_scale = 0.0
-    env = SpeedDetector(env)
-    env.inner_env.birth = [3]
-    ss = [2,3]
+        for step in range(512):
 
-    action_fn = get_glider
-    print("survival rules are ", ss)
-    print(action_fn)
-    env.inner_env.survive = ss
+            # random action, predictability reward should plummet
 
-
-    for action_fn in [get_glider, get_morley_puffer, get_symmetric_action]:
-        obs = env.reset()
-        sum_reward = 0.0
-        rewards = []
-        cells = []
-        
-        action = action_fn()
-
-        for step in range(3160):
-
+            action = (torch.rand_like(action) > 0.95).float()
             obs, reward, d, i = env.step(action)
             rewards.append(reward)
             
-            cells.append(env.speed)
+            cells.append(env.live_cells)
 
-            action *= 0.0
 
             sum_reward += reward
-
         print("reward sum ", sum_reward)
         
         plt.figure()
-        plt.plot(rewards)
-        plt.plot(cells[1:]/ np.max(cells[1:]))
+        plt.plot(rewards, lw=4, label="rewards")
+        #plt.plot(cells, label = "live cells")
+
+        plt.legend()
+
+        plt.figure()
+
+        plt.imshow(obs[0].detach().squeeze())
+
+
+        
     plt.show()
-
-
