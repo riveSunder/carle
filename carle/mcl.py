@@ -560,25 +560,25 @@ class PredictionBonus(AE2D):
 
         self.grid_buffer.append(obs)
 
-        loss = torch.zeros(obs.shape[0])
+        #loss = torch.zeros(obs.shape[0]).to(self.my_device)
 
-        for step in range(1, len(self.grid_buffer)):
+        #for step in range(1, len(self.grid_buffer)):
 
-            # feed frame to model
-            prediction = self.forward(self.grid_buffer[step-1])
-            # target is the next frame
-            my_target = self.grid_buffer[step]
+        # feed frame to model
+        prediction = self.forward(self.grid_buffer[0])
+        # target is the next frame
+        my_target = self.grid_buffer[-1]
 
-            loss += torch.mean(torch.abs((my_target-prediction)**2),\
-                    dim=[1,2,3]) #+ my_target.mean(dim=[1,2,3])
+        loss = torch.mean(torch.abs((my_target-prediction)**2),\
+                dim=[1,2,3]) #+ my_target.mean(dim=[1,2,3])
 
         if len(self.grid_buffer) > self.prediction_steps:
             _ = self.grid_buffer.pop(0)
 
         # loss is a tensor used for vectorized rnd reward bonuses
 
-        if len(self.grid_buffer) < self.prediction_steps:
-            loss += 1
+        #if len(self.grid_buffer) < self.prediction_steps:
+        #    loss += torch.tensor([1.0]).to(self.my_device)
 
         return loss
 
@@ -661,7 +661,7 @@ class PredictionBonus(AE2D):
 
         prediction_bonus = self.get_bonus_accumulate(obs).unsqueeze(1)
 
-        bonus = (1.0 -  prediction_bonus) #+ (obs.mean(dim=[1,2,3]) )
+        bonus = (0.1 -  prediction_bonus) #+ (obs.mean(dim=[1,2,3]) )
         my_mean = obs.mean(dim=[1,2,3])
 
         for ii in range(my_mean.shape[0]):
@@ -670,6 +670,36 @@ class PredictionBonus(AE2D):
 
 
         reward += self.reward_scale * bonus
+
+
+        self.live_cells = obs.sum()
+
+        return obs, reward, done, info
+
+class SurpriseBonus(AE2D):
+
+    def __init__(self, env, **kwargs):
+        super(SurpriseBonus, self).__init__(env, **kwargs)
+
+        self.ca_steps = 3
+
+    def step(self, action):
+
+        action = action.to(self.inner_env.my_device)
+        obs, reward, done, info = self.env.step(action)
+
+        prediction_bonus = self.get_bonus_accumulate(obs).unsqueeze(1)
+
+        bonus = prediction_bonus #+ (obs.mean(dim=[1,2,3]) )
+        my_mean = obs.mean(dim=[1,2,3])
+
+        for ii in range(my_mean.shape[0]):
+            if my_mean[ii] == 0.0:
+                bonus[ii] *= 0.0
+
+
+        reward += self.reward_scale * bonus
+
 
         self.live_cells = obs.sum()
 
@@ -746,6 +776,8 @@ class SpeedDetector(Motivator):
 
         return obs, reward, done, info
 
+
+        
 
 class PufferDetector(Motivator):
 
