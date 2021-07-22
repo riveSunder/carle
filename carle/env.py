@@ -10,13 +10,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-"""
-        __
-      <(o )__
-       (._> /
-        DUCK
-"""
-
 class CARLE(nn.Module):
 
     def __init__(self, **kwargs):
