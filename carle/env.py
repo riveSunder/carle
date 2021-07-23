@@ -160,14 +160,20 @@ class CARLE(nn.Module):
         # this may be better as an assertion line to avoid silent failures
         #action = action[:, :, :self.action_width, :self.action_height]
 
-        if action.shape[1] > self.action_width and action.shape[1] < self.width: 
+        if action.shape[3] > self.action_width and action.shape[1] < self.width: 
             off_y = (self.width - self.action_width) // 2
             off_x = (self.height - self.action_height) // 2
-            action_crop = action[:, :, off_y:self.action_width, off_x:self.action_height]
+            action_crop = action[:, :, off_y:-off_y, off_x:-off_x]
         else:
             action_crop = action
-        assert action_crop.shape[2] == self.action_width
-        assert action_crop.shape[3] == self.action_height
+
+
+        assert action_crop.shape[2] == self.action_width, \
+                f"action width is wrong {action_crop.shape[2]} not "\
+                f"{self.action_width}, f{action_crop.shape}"
+        assert action_crop.shape[3] == self.action_height,\
+                f"action height is wrong {action_crop.shape[1]} not "\
+                f"{self.action_height}, f{action_crop.shape}"
 
         action_crop = self.action_padding(action_crop)
 
