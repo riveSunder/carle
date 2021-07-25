@@ -51,6 +51,7 @@ class Motivator(nn.Module):
         self.inner_env.rules_from_string(my_string)
         self.birth = self.inner_env.birth
         self.survive = self.inner_env.survive
+
     
     def birth_rule_from_string(self, my_string="b3"):
 
@@ -82,6 +83,27 @@ class Motivator(nn.Module):
 
         pass
 
+class ParsimonyBonus(Motivator):
+    """
+    a bonus modulator that rewards being selective with actionsor doing less
+    
+    """
+
+    def __init__(self, env, **kwargs):
+        super(ParsimonyBonus, self).__init__(env, **kwargs) 
+
+        # 128 cells represents about 3% of a 64 by 64 action space
+        self.parsimony_threshold = 128
+
+    def step(self, action):
+
+        obs, reward, done, info = self.env.step(action)
+
+        reward = 100.0 * reward / \
+                (torch.max(action.sum(axis=[1,2,3]), torch.tensor([100.0])))
+
+        return obs, reward, done, info
+        
 class MorphoBonus(Motivator):
     """
     A bonus for matching a desired body/machine plan
@@ -875,7 +897,7 @@ if __name__ == "__main__":
 
     env = CARLE() 
     env = PredictionBonus(env)
-    #env = PufferDetector(env)
+    env = ParsimonyBonus(env)
     #env = SpeedDetector(env)
 
     #rules for Life
@@ -901,6 +923,7 @@ if __name__ == "__main__":
             obs, reward, d, i = env.step(action)
             rewards.append(reward)
             
+            env.live_cells = obs.sum()
             cells.append(env.live_cells)
 
             action *= 0.0
