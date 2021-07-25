@@ -1,11 +1,10 @@
 import unittest
-import argparse
 
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
 
-from carle.mcl import MorphoBonus, PredictionBonus, get_glider
+from carle.mcl import MorphoBonus, PredictionBonus, ParsimonyBonus, get_glider
 from carle.env import CARLE
 
 class TestPredictionBonus(unittest.TestCase):
@@ -53,12 +52,55 @@ class TestPredictionBonus(unittest.TestCase):
         self.assertGreater(reward, initial_reward)
         self.assertGreater(reward, second_reward)
 
+class TestParsimonyBonus(unittest.TestCase):
+
+    def setUp(self):
+
+        np.random.seed(42)
+        torch.random.manual_seed(42)
+
+
+    def test_practical(self):
+
+        env = CARLE(device="cpu")
+
+        # apply reward wrapper(s)
+
+        env = PredictionBonus(env)
+        env.batch_size = 2
+        number_steps = 16
+
+        env = ParsimonyBonus(env)
+
+        action = get_glider() 
+
+        rewards = []
+        obs = env.reset()
+        obs, initial_reward, done, info = env.step(action)
+
+
+        action = torch.zeros(1, 1, env.action_height, env.action_width)
+
+        for step in range(number_steps):
+            
+            obs, reward, done, info = env.step(action)
+
+        rewards.append(reward.detach().cpu().numpy().mean())
+
+        action[:, :, :env.action_height//2, :] = 1.0
+
+
+        obs, reward, done, info = env.step(action)
+
+        rewards.append(reward.detach().cpu().numpy().mean())
+
+        print(f"ratio with 0 toggles : ~2048 toggles = {rewards[0]/rewards[-1]}")
+        
+        # should be about 20 times less 
+        self.assertLess(abs(rewards[-1]), abs(rewards[0])/10)
+
+
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
 
-    parser.add_argument("-v", "--verbosity", default=0, \
-        help="Verbosity, options are 0 (quiet, default), 1 (timid), and 2 (noisy)")
-
-    args = parser.parse_args()
-
-    unittest.main(verbosity=args.verbosity)
+    unittest.main(verbosity=2)
