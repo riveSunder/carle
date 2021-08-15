@@ -1,7 +1,9 @@
-import numpy as np
-import matplotlib.pyplot as plt
 import os
 import time 
+from functools import reduce
+
+import numpy as np
+import matplotlib.pyplot as plt
 
 import skimage
 import skimage.io
@@ -216,16 +218,15 @@ class CARLE(nn.Module):
         else:
 
             my_neighborhood = self.neighborhood(self.universe)
-
-            universe_1 = torch.zeros_like(self.universe) 
-
-            for b in self.birth:
-                universe_1[((1-self.universe) * (my_neighborhood == b)) == 1] = 1
-
-            for s in self.survive:
-                universe_1[(self.universe * (my_neighborhood == s)) == 1] = 1
-
             
+            birth_grid = reduce(lambda a, b: 1.0 * (a + b), \
+                    [elem == my_neighborhood for elem in self.birth])
+            survive_grid = reduce(lambda a, b: 1.0 * (a + b), \
+                    [elem == my_neighborhood for elem in self.survive])
+
+            universe_1 = (1 - self.universe) * birth_grid \
+                    + self.universe * survive_grid
+
             self.universe = universe_1
             self.step_number += 1
 
