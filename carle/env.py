@@ -20,6 +20,8 @@ class CARLE(nn.Module):
         self.inner_env = None
         self.width = kwargs["width"] if "width" in kwargs.keys() else 256
         self.height = kwargs["height"] if "height" in kwargs.keys() else 256
+        self.action_width = kwargs["action_width"] if "action_width" in kwargs.keys() else 64
+        self.action_height = kwargs["action_height"] if "action_height" in kwargs.keys() else 64
         self.use_cuda = kwargs["use_cuda"] \
                 if "use_cuda" in kwargs.keys() else False
 
@@ -37,9 +39,6 @@ class CARLE(nn.Module):
 
         self.use_grad = kwargs["use_grad"] \
                 if "use_grad" in kwargs.keys() else False
-
-        self.action_width = 64 
-        self.action_height = 64  
 
         self.alive_rate = kwargs["alive_rate"] if "alive_rate" in kwargs.keys()\
                 else 0.0
