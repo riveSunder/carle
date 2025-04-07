@@ -1,5 +1,5 @@
 import os
-import time 
+import time
 from functools import reduce
 
 import numpy as np
@@ -18,18 +18,16 @@ class CARLE(nn.Module):
         super(CARLE, self).__init__()
 
         self.inner_env = None
-        self.width = kwargs["width"] if "width" in kwargs.keys() else 256
-        self.height = kwargs["height"] if "height" in kwargs.keys() else 256
-        self.action_width = kwargs["action_width"] if "action_width" in kwargs.keys() else 64
-        self.action_height = kwargs["action_height"] if "action_height" in kwargs.keys() else 64
-        self.use_cuda = kwargs["use_cuda"] \
-                if "use_cuda" in kwargs.keys() else False
+        self.width = kwargs.get("width", 256)
+        self.height = kwargs.get("height", 256)
+        self.action_width = kwargs.get("action_width", 64)
+        self.action_height = kwargs.get("action_height", 64)
+        self.use_cuda = kwargs.get("use_cuda", False)
 
         if "device" in kwargs.keys():
             device_str = kwargs["device"]
 
-            if device_str in ["cpu", "cuda",\
-                    "cuda:0", "cuda:1", "cuda:2", "cuda:3"]:
+            if device_str in ["cpu", "cuda", "cuda:0", "cuda:1", "cuda:2", "cuda:3"]:
                 self.my_device = torch.device(device_str)
         elif self.use_cuda:
             self.my_device = torch.device("cuda")
@@ -37,18 +35,15 @@ class CARLE(nn.Module):
             self.my_device = torch.device("cpu")
 
 
-        self.use_grad = kwargs["use_grad"] \
-                if "use_grad" in kwargs.keys() else False
+        self.use_grad = kwargs.get("use_grad", False)
 
-        self.alive_rate = kwargs["alive_rate"] if "alive_rate" in kwargs.keys()\
-                else 0.0
-        
-        # instances define how many CA universes to run in parallel via vectorization 
-        self.instances = kwargs["instances"] if "instances" in kwargs.keys()\
-                else 1
+        self.alive_rate = kwargs.get("alive_rate", 0.0)
+
+        # instances define how many CA universes to run in parallel via vectorization
+        self.instances = kwargs.get("instances", 1)
 
         # keep track of universe development
-        self.logging = kwargs["logging"] if "logging" in kwargs.keys() else False
+        self.logging = kwargs.get("logging", False)
 
         self.set_neighborhood()
         self.set_action_padding()
@@ -89,7 +84,7 @@ class CARLE(nn.Module):
         Establish the neighborhood function as a convolutional layer
         Moore neighborhoods are used in Life-like CA
         """
-        
+
         circular = True
 
         moore_kernel = torch.tensor([[1.,1.,1.], [1.,0.,1.], [1.,1.,1.]],\
@@ -106,14 +101,12 @@ class CARLE(nn.Module):
         self.neighborhood.to(self.my_device)
         self.to(self.my_device)
 
-        for param in self.neighborhood.parameters():
-            param.requres_grad = self.use_grad
-
-        for param in self.neighborhood.named_parameters():
-            param[1][0] = moore_kernel
+        with torch.no_grad():
+            for param in self.neighborhood.parameters():
+                param.copy_(moore_kernel.unsqueeze(0).unsqueeze(0))
 
         for param in self.neighborhood.parameters():
-            param.requres_grad = self.use_grad
+            param.requires_grad = self.use_grad
 
 
     def set_action_padding(self):
@@ -124,7 +117,7 @@ class CARLE(nn.Module):
         self.action_width -= (self.width % 2)
         self.action_height -= (self.height % 2)
 
-        width_padding = (self.width - self.action_width) // 2 
+        width_padding = (self.width - self.action_width) // 2
         height_padding = (self.height - self.action_height) // 2
 
         self.action_padding = nn.ZeroPad2d(padding=\
@@ -132,7 +125,7 @@ class CARLE(nn.Module):
                 width_padding, width_padding + assymetry_width))
 
     def reset(self):
-        
+
         self.universe = torch.zeros(self.instances, 1, self.height, self.width)
 
         self.universe = self.universe.to(self.my_device)
@@ -149,7 +142,7 @@ class CARLE(nn.Module):
 
     def apply_action(self, action):
 
-        if type(action) is not torch.Tensor:
+        if not isinstance(action, torch.Tensor):
             action = torch.Tensor(action)
 
         while len(action.shape) < 4:
@@ -161,7 +154,7 @@ class CARLE(nn.Module):
         # this may be better as an assertion line to avoid silent failures
         #action = action[:, :, :self.action_width, :self.action_height]
 
-        if action.shape[3] > self.action_width and action.shape[1] < self.width: 
+        if action.shape[3] > self.action_width and action.shape[1] < self.width:
             off_y = (self.width - self.action_width) // 2
             off_x = (self.height - self.action_height) // 2
             action_crop = action[:, :, off_y:-off_y, off_x:-off_x]
@@ -181,12 +174,14 @@ class CARLE(nn.Module):
         # toggle cells according to actions
         self.universe = 1.0 * torch.logical_xor(self.universe, action_crop.detach())
 
+
     def get_observation(self):
 
         return self.universe
 
+
     def step(self, action):
-        
+
         # always apply action
         if torch.sum(action):
             self.action = action
@@ -217,7 +212,7 @@ class CARLE(nn.Module):
         else:
 
             my_neighborhood = self.neighborhood(self.universe)
-            
+
             birth_grid = reduce(lambda a, b: 1.0 * (a + b), \
                     [elem == my_neighborhood for elem in self.birth])
             survive_grid = reduce(lambda a, b: 1.0 * (a + b), \
@@ -266,7 +261,7 @@ class CARLE(nn.Module):
         total_count = 0
         rle_length = len(rle)
 
-        my_grid = torch.zeros(self.height, self.width) 
+        my_grid = torch.zeros(self.height, self.width)
 
         temp = ""
         while total_count < rle_length:
@@ -306,20 +301,20 @@ class CARLE(nn.Module):
                     if len(temp) > 1:
                         row_run = int(temp[:-1])
 
-                        # +1 so that current row doesn't get overwritten 
+                        # +1 so that current row doesn't get overwritten
                         my_grid[ii+1:ii+row_run,:] = 0
 
                         ii += row_run
                     else:
                         my_grid[ii,jj:] = 0
-                        
+
                         # advance to next row
                         ii += 1
 
 
                     jj = 0
                     temp = ""
-                    
+
                 elif temp[-1] == "!":
                     temp = ""
 
@@ -335,10 +330,10 @@ class CARLE(nn.Module):
         with open(filepath, "r") as f:
 
             for temp_line in f.readlines():
-                    
+
                 if add_to_rle:
 
-                    rle += temp_line 
+                    rle += temp_line
 
                 if "rule" in temp_line:
 
@@ -347,16 +342,16 @@ class CARLE(nn.Module):
                     proto_birth = rules[0].split()[-1]
 
                     if ":" in rules:
-                        # assuming the rle includes dimensions 
+                        # assuming the rle includes dimensions
                         # (i.e. has a colon) for now
                         proto_survive_dim = rules[1].split(":")
 
                         proto_survive = proto_survive_dim[0]
                         proto_dim = proto_survive_dim[1]
-                    else: 
+                    else:
                         proto_survive = rules[-1]
                         proto_dim = None
-                        
+
 
                     self.birth = []
                     self.survive = []
@@ -376,7 +371,7 @@ class CARLE(nn.Module):
 
                     # ignore dimensions (and corner) for now (assuming rle files come from CARLE)
 
-                    # set 
+                    # set
                     add_to_rle = True
 
         return rle
@@ -421,9 +416,9 @@ class CARLE(nn.Module):
         else:
             rle += "#C step={} (universe) \n".format(self.step_number)
 
-        rle += "x = 0, y = 0, rule = B" 
+        rle += "x = 0, y = 0, rule = B"
         for bb in self.birth: rle += str(bb)
-        rle += "/S"  
+        rle += "/S"
         for ss in self.survive: rle += str(ss)
         rle += ":T{}, {}\n".format(self.height, self.width)
 
@@ -441,7 +436,7 @@ class CARLE(nn.Module):
                 if universe[ii, jj] == current_state:
                     run_count += 1
                 else:
-                    
+
                     run_length += str(run_count) + state_string[int(current_state)]
 
                     if len(run_length) > 69:
@@ -451,7 +446,7 @@ class CARLE(nn.Module):
                     current_state = universe[ii,jj]
                     run_count = 1
 
-            
+
             run_length += str(run_count) + state_string[int(current_state)]
             run_length += "$"
             if len(run_length) > 69:
@@ -462,6 +457,7 @@ class CARLE(nn.Module):
         rle += "!"
 
         return rle
+
 
     def log_universe(self, universe_index=0):
         """
@@ -475,12 +471,12 @@ class CARLE(nn.Module):
 
         self.log.append([rle_action, rle_universe])
 
-        
+
     def save_log(self):
         """
         save log as csv file
         """
-        
+
         with open("./logs/carle_log{}.csv".format(self.instance_id), "w") as f:
 
             f.write('action,universe,\n')
@@ -503,11 +499,11 @@ class CARLE(nn.Module):
 
     def save_frame(self):
         """
-        save frames from the first instance of 'universe' 
+        save frames from the first instance of 'universe'
         (at index [0,0,:,:] from self.universe tensor)
         """
 
-            
+
         skimage.io.imsave("./frames/frame{}_step{}.png"\
                 .format(self.instance_id, self.step_number), \
                 np.uint8(255 * self.universe[0,0,:,:].detach().cpu().numpy()))
@@ -519,7 +515,7 @@ if __name__ == '__main__':
     env = CARLE(logging=True)
 
     obs = env.reset()
-    
+
 
     my_steps = 3
 
@@ -566,7 +562,7 @@ if __name__ == '__main__':
 
             for step in range(my_steps):
                 _ = env.step(action)
-            
+
 
             t3 = time.time()
             print("CA updates per second with {}x vectorization = {}"\
