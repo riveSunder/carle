@@ -12,6 +12,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+torch.set_default_dtype(torch.float32)
+
 class CARLE(nn.Module):
 
     def __init__(self, **kwargs):
@@ -186,6 +188,20 @@ class CARLE(nn.Module):
 
         return self.universe
 
+    def forward(self, universe):
+
+        my_neighborhood = self.neighborhood(universe)
+
+        birth_grid = reduce(lambda a, b: 1.0 * (a + b), \
+                [elem == my_neighborhood for elem in self.birth])
+        survive_grid = reduce(lambda a, b: 1.0 * (a + b), \
+                [elem == my_neighborhood for elem in self.survive])
+
+        universe_1 = (1 - universe) * birth_grid \
+                + universe * survive_grid
+
+        return universe_1
+
     def step(self, action):
         
         # always apply action
@@ -216,18 +232,7 @@ class CARLE(nn.Module):
 
             observation = self.reset()
         else:
-
-            my_neighborhood = self.neighborhood(self.universe)
-            
-            birth_grid = reduce(lambda a, b: 1.0 * (a + b), \
-                    [elem == my_neighborhood for elem in self.birth])
-            survive_grid = reduce(lambda a, b: 1.0 * (a + b), \
-                    [elem == my_neighborhood for elem in self.survive])
-
-            universe_1 = (1 - self.universe) * birth_grid \
-                    + self.universe * survive_grid
-
-            self.universe = universe_1
+            self.universe = self.forward(self.universe)
             self.step_number += 1
 
             # This environment is open-ended free from exogenous reward,
