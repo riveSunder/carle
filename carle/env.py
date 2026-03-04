@@ -12,6 +12,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+torch.set_default_dtype(torch.float32)
+
 class CARLE(nn.Module):
 
     def __init__(self, **kwargs):
@@ -55,8 +57,11 @@ class CARLE(nn.Module):
 
         # Conway's GoL rules
         self.allowed_rules = [str(num) for num in range(9)]
-        self.birth = [3]
-        self.survive = [2,3]
+        self.birth_rule_from_string("3")
+        self.survive_rule_from_string("23")
+
+        #self.birth = [3]
+        #self.survive = [2,3]
 
 
     def birth_rule_from_string(self, my_string="B3"):
@@ -68,6 +73,8 @@ class CARLE(nn.Module):
         self.birth = list(set(self.birth))
         self.birth.sort()
 
+        self.t_birth = torch.tensor(self.birth).reshape(1,len(self.birth),1,1).int()
+
     def survive_rule_from_string(self, my_string="S23"):
         self.survive = []
         for element in my_string:
@@ -76,6 +83,8 @@ class CARLE(nn.Module):
 
         self.survive = list(set(self.survive))
         self.survive.sort()
+
+        self.t_survive = torch.tensor(self.survive).reshape(1,len(self.survive),1,1).int()
 
     def rules_from_string(self, my_string="B3/S23"):
 
@@ -109,8 +118,9 @@ class CARLE(nn.Module):
         for param in self.neighborhood.parameters():
             param.requres_grad = self.use_grad
 
-        for param in self.neighborhood.named_parameters():
-            param[1][0] = moore_kernel
+        with torch.no_grad():
+          for param in self.neighborhood.named_parameters():
+              param[1][0] = moore_kernel
 
         for param in self.neighborhood.parameters():
             param.requres_grad = self.use_grad
@@ -185,6 +195,31 @@ class CARLE(nn.Module):
 
         return self.universe
 
+    def forward(self, universe):
+
+        my_neighborhood = self.neighborhood(universe).int()
+        birth_grid = torch.zeros_like(my_neighborhood, dtype=torch.bool)
+        survive_grid = torch.zeros_like(my_neighborhood, dtype=torch.bool)
+
+        for birth in self.birth:
+            birth_grid |= (my_neighborhood == birth)
+
+        for survive in self.survive:
+            survive_grid |= (my_neighborhood == survive)
+
+        # slow
+        #birth_grid = (my_neighborhood == self.t_birth).sum(1, keepdims=True)
+        #survive_grid = (my_neighborhood == self.t_survive).sum(1, keepdims=True)
+        # also slow
+        #birth_grid = reduce(lambda a, b: 1.0 * (a + b), \
+        #        [elem == my_neighborhood for elem in self.birth])
+        #survive_grid = reduce(lambda a, b: 1.0 * (a + b), \
+        #        [elem == my_neighborhood for elem in self.survive])
+
+        universe_1 = universe.bool() & survive_grid | (universe == 0) & birth_grid
+
+        return universe_1.float()
+
     def step(self, action):
         
         # always apply action
@@ -215,18 +250,7 @@ class CARLE(nn.Module):
 
             observation = self.reset()
         else:
-
-            my_neighborhood = self.neighborhood(self.universe)
-            
-            birth_grid = reduce(lambda a, b: 1.0 * (a + b), \
-                    [elem == my_neighborhood for elem in self.birth])
-            survive_grid = reduce(lambda a, b: 1.0 * (a + b), \
-                    [elem == my_neighborhood for elem in self.survive])
-
-            universe_1 = (1 - self.universe) * birth_grid \
-                    + self.universe * survive_grid
-
-            self.universe = universe_1
+            self.universe = self.forward(self.universe)
             self.step_number += 1
 
             # This environment is open-ended free from exogenous reward,
